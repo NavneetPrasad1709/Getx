@@ -1,0 +1,13 @@
+{
+  "root": true,
+  "extends": ["prettier"],
+  "ignorePatterns": [
+    "node_modules",
+    ".next",
+    "dist",
+    "build",
+    ".turbo",
+    "coverage",
+    "next-env.d.ts"
+  ]
+}

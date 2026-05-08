@@ -1,0 +1,24 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# Post-install build scripts approved to run (pnpm 11+).
+# unrs-resolver: native bindings used by ESLint typescript-eslint resolver.
+# sharp: native image-optimization binary used by Next.js.
+# @nestjs/core: prints donation banner — safe.
+allowBuilds:
+  '@nestjs/core': true
+  sharp: true
+  unrs-resolver: true
+
+# Legacy alias (kept for compatibility with older pnpm tooling).
+onlyBuiltDependencies:
+  - '@nestjs/core'
+  - '@prisma/client'
+  - '@prisma/engines'
+  - '@swc/core'
+  - 'bcrypt'
+  - 'esbuild'
+  - 'prisma'
+  - 'sharp'
+  - 'unrs-resolver'
