@@ -11,12 +11,12 @@ Production-grade gaming marketplace built for 20 lakh users.
 
 Multi-app monorepo (Eldorado-style):
 
-| App           | URL           | Port | Stack                             |
-| ------------- | ------------- | ---- | --------------------------------- |
-| `apps/web`    | getx.gg       | 3000 | Next.js 14 (buyer)                |
-| `apps/seller` | sell.getx.gg  | 3001 | Next.js 14 (seller dashboard)     |
-| `apps/admin`  | admin.getx.gg | 3002 | Next.js 14 (admin, IP-restricted) |
-| `apps/api`    | api.getx.gg   | 4000 | NestJS (backend)                  |
+| App           | URL           | Port | Stack                                        |
+| ------------- | ------------- | ---- | -------------------------------------------- |
+| `apps/web`    | getx.gg       | 3000 | Next.js 15 + React 19 (buyer)                |
+| `apps/seller` | sell.getx.gg  | 3001 | Next.js 15 + React 19 (seller dashboard)     |
+| `apps/admin`  | admin.getx.gg | 3002 | Next.js 15 + React 19 (admin, IP-restricted) |
+| `apps/api`    | api.getx.gg   | 4000 | NestJS 11 (backend)                          |
 
 ## Shared Packages
 
@@ -28,7 +28,7 @@ Multi-app monorepo (Eldorado-style):
 
 ## Stack (Locked)
 
-- **Frontend:** Next.js 14 + Tailwind + shadcn/ui + Framer Motion + TanStack Query + Zustand
+- **Frontend:** Next.js 15 + React 19 + Tailwind + shadcn/ui + Framer Motion + TanStack Query + Zustand
 - **Backend:** NestJS + Prisma + PostgreSQL
 - **Cache:** Redis (Upstash)
 - **Queue:** BullMQ
