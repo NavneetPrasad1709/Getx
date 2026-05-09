@@ -5,6 +5,8 @@ import { Badge, Card, CardContent, Skeleton } from '@getx/ui';
 import { Header } from '@/components/header';
 import { LandingFooter } from '@/components/landing/landing-footer';
 import { useGame } from '@/hooks/use-games';
+import { CustomRequestCTA } from '@/components/custom-request/custom-request-cta';
+import { FloatingCTA } from '@/components/custom-request/floating-cta';
 
 interface BoostingService {
   slug: string;
@@ -133,6 +135,12 @@ export default function BoostingHubPage() {
             </Link>
           </CardContent>
         </Card>
+
+        <div className="mt-8">
+          <CustomRequestCTA gameSlug="pokemon-go" tabType="BOOSTING" variant="banner" />
+        </div>
+
+        <FloatingCTA gameSlug="pokemon-go" tabType="BOOSTING" />
       </main>
 
       <LandingFooter />

@@ -2,6 +2,7 @@
 
 import { Button, Card, CardContent, CardHeader, CardTitle, Input } from '@getx/ui';
 import type { ListingFilters } from '@/hooks/use-listings';
+import { CustomRequestCTA } from '@/components/custom-request/custom-request-cta';
 
 const ITEM_TYPES = [
   'Pokeballs',
@@ -108,6 +109,13 @@ export function ItemsFilters({ filters, onUpdate, onClear }: Props) {
             />
           </div>
         </FilterGroup>
+
+        <div className="pt-4 border-t text-center">
+          <p className="text-xs text-muted-foreground mb-2">
+            Can&apos;t find what you&apos;re looking for?
+          </p>
+          <CustomRequestCTA gameSlug="pokemon-go" tabType="ITEMS" variant="inline" />
+        </div>
       </CardContent>
     </Card>
   );

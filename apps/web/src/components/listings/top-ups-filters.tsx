@@ -2,6 +2,7 @@
 
 import { Button, Card, CardContent, CardHeader, CardTitle, Input } from '@getx/ui';
 import type { ListingFilters } from '@/hooks/use-listings';
+import { CustomRequestCTA } from '@/components/custom-request/custom-request-cta';
 
 const COIN_AMOUNTS = ['100', '500', '1200', '2500', '5200', '14500'];
 const DELIVERY_METHODS = ['Account login', 'Gift code'];
@@ -115,6 +116,13 @@ export function TopUpsFilters({ filters, onUpdate, onClear }: Props) {
             ))}
           </select>
         </FilterGroup>
+
+        <div className="pt-4 border-t text-center">
+          <p className="text-xs text-muted-foreground mb-2">
+            Can&apos;t find what you&apos;re looking for?
+          </p>
+          <CustomRequestCTA gameSlug="pokemon-go" tabType="TOP_UPS" variant="inline" />
+        </div>
       </CardContent>
     </Card>
   );

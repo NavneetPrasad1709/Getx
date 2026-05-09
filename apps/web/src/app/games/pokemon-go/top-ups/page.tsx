@@ -11,6 +11,9 @@ import { ListingCard } from '@/components/listings/listing-card';
 import { TopUpsFilters } from '@/components/listings/top-ups-filters';
 import { Pagination } from '@/components/listings/pagination';
 import { SortDropdown } from '@/components/listings/sort-dropdown';
+import { CustomRequestButton } from '@/components/custom-request/custom-request-button';
+import { CustomRequestCTA } from '@/components/custom-request/custom-request-cta';
+import { FloatingCTA } from '@/components/custom-request/floating-cta';
 
 function floatParam(v: string | null): number | undefined {
   if (!v) return undefined;
@@ -157,9 +160,11 @@ function TopUpsBrowseContent() {
                   </p>
                   <div className="flex flex-wrap items-center justify-center gap-3">
                     <Button onClick={clearFilters}>Clear filters</Button>
-                    <Link href="/requests/new">
-                      <Button variant="outline">Post Custom Request</Button>
-                    </Link>
+                    <CustomRequestButton
+                      gameSlug="pokemon-go"
+                      tabType="TOP_UPS"
+                      variant="outline"
+                    />
                   </div>
                 </CardContent>
               </Card>
@@ -180,10 +185,16 @@ function TopUpsBrowseContent() {
                     onPageChange={(p) => updateFilters({ page: p })}
                   />
                 )}
+
+                <div className="mt-12">
+                  <CustomRequestCTA gameSlug="pokemon-go" tabType="TOP_UPS" variant="banner" />
+                </div>
               </>
             )}
           </div>
         </div>
+
+        <FloatingCTA gameSlug="pokemon-go" tabType="TOP_UPS" />
       </main>
 
       <LandingFooter />

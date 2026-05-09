@@ -2,6 +2,7 @@
 
 import { Button, Card, CardContent, CardHeader, CardTitle, Input } from '@getx/ui';
 import type { ListingFilters } from '@/hooks/use-listings';
+import { CustomRequestCTA } from '@/components/custom-request/custom-request-cta';
 
 const TEAMS = ['Mystic', 'Valor', 'Instinct'];
 const REGIONS = ['Global', 'India', 'USA', 'EU', 'Asia'];
@@ -195,6 +196,13 @@ export function AccountsFilters({ filters, onUpdate, onClear }: Props) {
             ))}
           </select>
         </FilterGroup>
+
+        <div className="pt-4 border-t text-center">
+          <p className="text-xs text-muted-foreground mb-2">
+            Can&apos;t find what you&apos;re looking for?
+          </p>
+          <CustomRequestCTA gameSlug="pokemon-go" tabType="ACCOUNTS" variant="inline" />
+        </div>
       </CardContent>
     </Card>
   );
