@@ -22,6 +22,14 @@ export const ListListingsSchema = z.object({
   hundoMin: z.coerce.number().int().min(0).optional(),
   region: z.string().optional(),
   platform: z.string().optional(),
+
+  // Top-Ups-specific filters (only applied when tabType=TOP_UPS).
+  coinAmount: z.string().optional(),
+  deliveryMethod: z.string().optional(),
+
+  // Items-specific filters (only applied when tabType=ITEMS).
+  itemTypes: z.string().optional(), // CSV: "Pokeballs,Berries"
+  quantityMin: z.coerce.number().int().min(0).optional(),
 });
 
 export type ListListingsDto = z.infer<typeof ListListingsSchema>;

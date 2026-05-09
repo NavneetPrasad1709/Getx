@@ -112,6 +112,12 @@ export interface ListingFilters {
   hundoMin?: number;
   region?: string;
   platform?: string;
+  // Top-Ups
+  coinAmount?: string;
+  deliveryMethod?: string;
+  // Items
+  itemTypes?: string;
+  quantityMin?: number;
 }
 
 function toQuery(filters: ListingFilters): string {

@@ -235,6 +235,72 @@ export class ListingsService {
       }
     }
 
+    if (filters.tabType === 'TOP_UPS') {
+      const attrFilters: Prisma.ProductListingWhereInput[] = [];
+
+      if (filters.coinAmount) {
+        attrFilters.push({
+          attributes: {
+            path: ['coinAmount'],
+            equals: filters.coinAmount,
+          },
+        });
+      }
+      if (filters.deliveryMethod) {
+        attrFilters.push({
+          attributes: {
+            path: ['deliveryMethod'],
+            equals: filters.deliveryMethod,
+          },
+        });
+      }
+      if (filters.platform) {
+        attrFilters.push({
+          attributes: {
+            path: ['platform'],
+            equals: filters.platform,
+          },
+        });
+      }
+
+      if (attrFilters.length > 0) {
+        where.AND = attrFilters;
+      }
+    }
+
+    if (filters.tabType === 'ITEMS') {
+      const attrFilters: Prisma.ProductListingWhereInput[] = [];
+
+      if (filters.itemTypes) {
+        const types = filters.itemTypes
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean);
+        if (types.length > 0) {
+          attrFilters.push({
+            OR: types.map((t) => ({
+              attributes: {
+                path: ['itemTypes'],
+                array_contains: t,
+              },
+            })),
+          });
+        }
+      }
+      if (filters.quantityMin !== undefined) {
+        attrFilters.push({
+          attributes: {
+            path: ['totalQuantity'],
+            gte: filters.quantityMin,
+          },
+        });
+      }
+
+      if (attrFilters.length > 0) {
+        where.AND = attrFilters;
+      }
+    }
+
     const orderBy: Prisma.ProductListingOrderByWithRelationInput = (() => {
       switch (filters.sort) {
         case 'price-asc':

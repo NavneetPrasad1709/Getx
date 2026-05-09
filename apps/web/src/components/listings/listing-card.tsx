@@ -17,22 +17,39 @@ function tabMonogram(tab: Listing['tabType']): string {
   return 'I';
 }
 
+function tabSegment(tab: Listing['tabType']): string {
+  if (tab === 'ACCOUNTS') return 'accounts';
+  if (tab === 'TOP_UPS') return 'top-ups';
+  return 'items';
+}
+
 interface Props {
   listing: Listing;
+  /** Optional explicit href base. Defaults to game-slug + tab segment. */
   hrefBase?: string;
 }
 
-export function ListingCard({ listing, hrefBase = '/games/pokemon-go/accounts' }: Props) {
+export function ListingCard({ listing, hrefBase }: Props) {
   const attrs = listing.attributes;
   const level = typeof attrs.level === 'number' ? attrs.level : null;
   const team = typeof attrs.team === 'string' ? attrs.team : null;
   const shinyCount = typeof attrs.shinyCount === 'number' ? attrs.shinyCount : null;
 
+  const coinAmount = typeof attrs.coinAmount === 'string' ? attrs.coinAmount : null;
+  const deliveryMethod = typeof attrs.deliveryMethod === 'string' ? attrs.deliveryMethod : null;
+  const platform = typeof attrs.platform === 'string' ? attrs.platform : null;
+
+  const totalQuantity = typeof attrs.totalQuantity === 'number' ? attrs.totalQuantity : null;
+  const itemTypes = Array.isArray(attrs.itemTypes)
+    ? (attrs.itemTypes.filter((t) => typeof t === 'string') as string[])
+    : [];
+
   const sellerInitial = (listing.seller.name ?? listing.seller.username ?? '?')
     .charAt(0)
     .toUpperCase();
 
-  const href = listing.slug ? `${hrefBase}/${listing.slug}` : '#';
+  const base = hrefBase ?? `/games/${listing.game.slug}/${tabSegment(listing.tabType)}`;
+  const href = listing.slug ? `${base}/${listing.slug}` : '#';
 
   return (
     <Link href={href} className="block group">
@@ -86,6 +103,46 @@ export function ListingCard({ listing, hrefBase = '/games/pokemon-go/accounts' }
               {shinyCount !== null && (
                 <span className="px-2 py-0.5 rounded bg-warning/10 text-warning">
                   ★ {shinyCount} shinies
+                </span>
+              )}
+            </div>
+          )}
+
+          {listing.tabType === 'TOP_UPS' && (
+            <div className="flex flex-wrap gap-1.5 mb-3 text-xs">
+              {coinAmount && (
+                <span className="px-2 py-0.5 rounded bg-primary/10 text-primary font-medium">
+                  {coinAmount} coins
+                </span>
+              )}
+              {deliveryMethod && (
+                <span className="px-2 py-0.5 rounded bg-muted/30 text-muted-foreground">
+                  {deliveryMethod}
+                </span>
+              )}
+              {platform && (
+                <span className="px-2 py-0.5 rounded bg-accent/10 text-accent-foreground">
+                  {platform}
+                </span>
+              )}
+            </div>
+          )}
+
+          {listing.tabType === 'ITEMS' && (
+            <div className="flex flex-wrap gap-1.5 mb-3 text-xs">
+              {totalQuantity !== null && (
+                <span className="px-2 py-0.5 rounded bg-primary/10 text-primary font-medium">
+                  {totalQuantity} items
+                </span>
+              )}
+              {itemTypes.slice(0, 2).map((t) => (
+                <span key={t} className="px-2 py-0.5 rounded bg-muted/30 text-muted-foreground">
+                  {t}
+                </span>
+              ))}
+              {itemTypes.length > 2 && (
+                <span className="px-2 py-0.5 rounded bg-muted/30 text-muted-foreground">
+                  +{itemTypes.length - 2}
                 </span>
               )}
             </div>
