@@ -21,9 +21,12 @@
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
+    "db:sync-games": "tsx prisma/sync-games.ts",
+    "db:seed-listings": "tsx prisma/seed-listings.ts",
     "db:reset": "prisma migrate reset --force"
   },
   "dependencies": {
+    "@getx/games": "workspace:*",
     "@prisma/client": "^5.22.0",
     "bcryptjs": "^2.4.3"
   },

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { ThemeProvider, Toaster, PageTransition } from '@getx/ui';
 import { AuthProvider } from '@/hooks/use-auth';
+import { QueryProvider } from '@/components/query-provider';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -14,9 +15,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased" suppressHydrationWarning>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
-          <AuthProvider>
-            <PageTransition>{children}</PageTransition>
-          </AuthProvider>
+          <QueryProvider>
+            <AuthProvider>
+              <PageTransition>{children}</PageTransition>
+            </AuthProvider>
+          </QueryProvider>
           <Toaster />
         </ThemeProvider>
       </body>

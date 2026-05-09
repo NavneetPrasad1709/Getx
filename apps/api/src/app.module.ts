@@ -6,6 +6,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AuditModule } from './audit/audit.module';
 import { MailModule } from './mail/mail.module';
 import { AuthModule } from './auth/auth.module';
+import { GamesModule } from './games/games.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { AuthModule } from './auth/auth.module';
     AuditModule,
     MailModule,
     AuthModule,
+    GamesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

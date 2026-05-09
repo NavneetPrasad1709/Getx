@@ -1,24 +1,574 @@
-import type { GameConfig, ListingType } from '@getx/types';
+import type { AddOn, GameConfig } from './types';
 
-export interface GameTab {
-  slug: string;
-  name: string;
-  type: ListingType;
-}
+const PLATFORMS = ['iOS', 'Android'];
 
-export interface ExtendedGameConfig extends GameConfig {
-  tabs: GameTab[];
-}
+const STREAM_ADDON: AddOn = {
+  name: 'stream',
+  label: 'Stream live',
+  description: 'Watch your booster work in real-time',
+};
+const OFFLINE_ADDON: AddOn = {
+  name: 'offlineMode',
+  label: 'Offline mode',
+  description: 'Discreet boosting (no live activity)',
+};
+const PRIORITY_ADDON: AddOn = {
+  name: 'priorityDelivery',
+  label: 'Priority delivery',
+  description: 'Fastest possible completion',
+  price: 5,
+};
+const COMMON_ADDONS: AddOn[] = [STREAM_ADDON, OFFLINE_ADDON, PRIORITY_ADDON];
 
-export const pokemonGoConfig: ExtendedGameConfig = {
+export const pokemonGoConfig: GameConfig = {
   slug: 'pokemon-go',
   name: 'Pokemon GO',
-  icon: '🎮',
+  shortName: 'PoGO',
+  description:
+    "The world's biggest AR mobile game. Buy accounts, top-ups, items, and expert boosting services.",
+  icon: 'https://cdn.getx.gg/games/pokemon-go-icon.png',
+  banner: 'https://cdn.getx.gg/games/pokemon-go-banner.png',
   isActive: true,
+  isLaunched: true,
+  sortOrder: 1,
+
+  customRequest: {
+    enabled: true,
+    maxImages: 5,
+    minDescription: 50,
+    requiredFields: ['title', 'description', 'budgetMin', 'budgetMax'],
+  },
+
   tabs: [
-    { slug: 'accounts', name: 'Accounts', type: 'BROWSE' },
-    { slug: 'top-ups', name: 'Top Ups', type: 'BROWSE' },
-    { slug: 'items', name: 'Items', type: 'BROWSE' },
-    { slug: 'boosting', name: 'Boosting', type: 'REVERSE' },
+    // ─── TAB 1: ACCOUNTS (Browse) ───────────────────────────
+    {
+      slug: 'accounts',
+      name: 'Accounts',
+      icon: '👤',
+      type: 'BROWSE',
+      tagline: 'Pre-leveled trainer accounts (Level 1-80)',
+      description: 'Verified Pokemon GO accounts with Pokemon, items, and progress.',
+      browseFilters: [
+        { name: 'level', label: 'Level', type: 'range', min: 1, max: 80 },
+        {
+          name: 'team',
+          label: 'Team',
+          type: 'multiselect',
+          options: ['Mystic', 'Valor', 'Instinct'],
+        },
+        { name: 'shinyCount', label: 'Shiny Count', type: 'range', min: 0, max: 500 },
+        {
+          name: 'legendaryCount',
+          label: 'Legendary Count',
+          type: 'range',
+          min: 0,
+          max: 100,
+        },
+        {
+          name: 'hundoCount',
+          label: '100% IV Pokemon',
+          type: 'range',
+          min: 0,
+          max: 50,
+        },
+        {
+          name: 'region',
+          label: 'Region',
+          type: 'select',
+          options: ['Global', 'India', 'USA', 'EU', 'Asia'],
+        },
+        {
+          name: 'platform',
+          label: 'Platform',
+          type: 'multiselect',
+          options: PLATFORMS,
+        },
+      ],
+      productFields: [
+        {
+          name: 'level',
+          label: 'Account Level',
+          type: 'number',
+          min: 1,
+          max: 80,
+          required: true,
+        },
+        {
+          name: 'team',
+          label: 'Team',
+          type: 'select',
+          options: ['Mystic', 'Valor', 'Instinct'],
+          required: true,
+        },
+        { name: 'shinyCount', label: 'Number of Shinies', type: 'number', min: 0 },
+        {
+          name: 'legendaryCount',
+          label: 'Legendary Pokemon Count',
+          type: 'number',
+          min: 0,
+        },
+        {
+          name: 'mythicalCount',
+          label: 'Mythical Pokemon Count',
+          type: 'number',
+          min: 0,
+        },
+        {
+          name: 'hundoCount',
+          label: '100% IV Pokemon Count',
+          type: 'number',
+          min: 0,
+        },
+        {
+          name: 'masterTrainerCount',
+          label: 'Master Trainer Medals',
+          type: 'number',
+          min: 0,
+        },
+        {
+          name: 'region',
+          label: 'Account Region',
+          type: 'select',
+          options: ['Global', 'India', 'USA', 'EU', 'Asia'],
+        },
+        {
+          name: 'platform',
+          label: 'Platform',
+          type: 'select',
+          options: PLATFORMS,
+          required: true,
+        },
+        {
+          name: 'pttClubLevel',
+          label: 'PTT Club Tier',
+          type: 'select',
+          options: ['None', 'Bronze', 'Silver', 'Gold', 'Platinum'],
+        },
+      ],
+    },
+
+    // ─── TAB 2: TOP-UPS (Browse) ────────────────────────────
+    {
+      slug: 'top-ups',
+      name: 'Top Ups',
+      icon: '💰',
+      type: 'BROWSE',
+      tagline: 'PokéCoins instant top-up',
+      description: 'Premium currency for Pokemon GO. Instant delivery to your account.',
+      browseFilters: [
+        {
+          name: 'amount',
+          label: 'Coin Amount',
+          type: 'select',
+          options: ['100', '500', '1200', '2500', '5200', '14500'],
+        },
+        {
+          name: 'deliveryMethod',
+          label: 'Delivery',
+          type: 'select',
+          options: ['Account login', 'Gift code'],
+        },
+      ],
+      productFields: [
+        {
+          name: 'coinAmount',
+          label: 'PokéCoin Amount',
+          type: 'select',
+          options: ['100', '500', '1200', '2500', '5200', '14500'],
+          required: true,
+        },
+        {
+          name: 'deliveryMethod',
+          label: 'Delivery Method',
+          type: 'select',
+          options: ['Account login', 'Gift code'],
+          required: true,
+        },
+        {
+          name: 'platform',
+          label: 'Platform',
+          type: 'select',
+          options: PLATFORMS,
+        },
+      ],
+    },
+
+    // ─── TAB 3: ITEMS (Browse) ──────────────────────────────
+    {
+      slug: 'items',
+      name: 'Items',
+      icon: '📦',
+      type: 'BROWSE',
+      tagline: 'Pokeballs, berries, potions & bundles',
+      description: 'In-game items and curated bundles for your trainer.',
+      browseFilters: [
+        {
+          name: 'itemTypes',
+          label: 'Item Type',
+          type: 'multiselect',
+          options: ['Pokeballs', 'Great Balls', 'Ultra Balls', 'Berries', 'Potions', 'Revives'],
+        },
+        {
+          name: 'totalQuantity',
+          label: 'Quantity',
+          type: 'range',
+          min: 50,
+          max: 10000,
+        },
+      ],
+      productFields: [
+        {
+          name: 'itemTypes',
+          label: 'Item Types',
+          type: 'multiselect',
+          options: [
+            'Pokeballs',
+            'Great Balls',
+            'Ultra Balls',
+            'Razz Berries',
+            'Pinap Berries',
+            'Nanab Berries',
+            'Potions',
+            'Super Potions',
+            'Hyper Potions',
+            'Revives',
+            'Max Revives',
+          ],
+          required: true,
+        },
+        {
+          name: 'totalQuantity',
+          label: 'Total Quantity',
+          type: 'number',
+          min: 50,
+          required: true,
+        },
+        {
+          name: 'breakdown',
+          label: 'Item Breakdown (e.g., "100 Pokeballs + 50 Berries")',
+          type: 'textarea',
+        },
+      ],
+    },
+
+    // ─── TAB 4: BOOSTING (Reverse) ──────────────────────────
+    {
+      slug: 'boosting',
+      name: 'Boosting',
+      icon: '⚡',
+      type: 'REVERSE',
+      tagline: 'Get expert boosters in under 2 minutes',
+      description: 'Fill the form, sellers bid, you choose the best offer.',
+      subServices: [
+        {
+          slug: 'level-up',
+          name: 'Level Up',
+          icon: '⬆️',
+          description: 'Level up your Pokemon GO trainer fast',
+          tagline: 'Save up to 40% on power leveling',
+          estimatedTime: '1-7 days',
+          formFields: [
+            {
+              name: 'currentLevel',
+              label: 'Current Level',
+              type: 'number',
+              min: 1,
+              max: 79,
+              required: true,
+            },
+            {
+              name: 'desiredLevel',
+              label: 'Desired Level',
+              type: 'number',
+              min: 2,
+              max: 80,
+              required: true,
+            },
+            {
+              name: 'platform',
+              label: 'Platform',
+              type: 'select',
+              options: PLATFORMS,
+              required: true,
+            },
+            {
+              name: 'accountStatus',
+              label: 'Account Status',
+              type: 'select',
+              options: ['New (just created)', 'Active player', 'Returning player'],
+            },
+          ],
+          addons: COMMON_ADDONS,
+        },
+        {
+          slug: 'xp-boost',
+          name: 'XP Boost',
+          icon: '⚡',
+          description: 'Massive XP gains for your trainer',
+          estimatedTime: '6-48 hours',
+          formFields: [
+            {
+              name: 'xpAmount',
+              label: 'XP Amount',
+              type: 'select',
+              options: ['1M', '5M', '10M', '50M', 'Custom'],
+              required: true,
+            },
+            {
+              name: 'customXp',
+              label: 'Custom XP Amount',
+              type: 'number',
+              conditional: 'xpAmount=Custom',
+              min: 100000,
+            },
+            {
+              name: 'platform',
+              label: 'Platform',
+              type: 'select',
+              options: PLATFORMS,
+              required: true,
+            },
+            {
+              name: 'speed',
+              label: 'Delivery Speed',
+              type: 'radio',
+              options: ['Standard', 'Fast (+$5)'],
+            },
+          ],
+          addons: COMMON_ADDONS,
+        },
+        {
+          slug: 'stardust-farming',
+          name: 'Stardust Farming',
+          icon: '✨',
+          description: 'Earn massive stardust amounts',
+          estimatedTime: '12-72 hours',
+          formFields: [
+            {
+              name: 'amount',
+              label: 'Stardust Amount',
+              type: 'select',
+              options: ['100k', '500k', '1M', '5M', 'Custom'],
+              required: true,
+            },
+            {
+              name: 'customAmount',
+              label: 'Custom Stardust',
+              type: 'number',
+              conditional: 'amount=Custom',
+              min: 50000,
+            },
+            {
+              name: 'platform',
+              label: 'Platform',
+              type: 'select',
+              options: PLATFORMS,
+              required: true,
+            },
+            {
+              name: 'speed',
+              label: 'Delivery Speed',
+              type: 'radio',
+              options: ['Standard', 'Fast (+$5)'],
+            },
+          ],
+          addons: COMMON_ADDONS,
+        },
+        {
+          slug: 'raid-service',
+          name: 'Raid Service',
+          icon: '⚔️',
+          description: 'Defeat raid bosses & catch legendaries',
+          estimatedTime: '2-24 hours',
+          formFields: [
+            {
+              name: 'raidTier',
+              label: 'Raid Tier',
+              type: 'select',
+              options: [
+                'Tier 1',
+                'Tier 3',
+                'Tier 5 (Legendary)',
+                'Mega Raid',
+                'Shadow Raid',
+                'Elite Raid',
+              ],
+              required: true,
+            },
+            {
+              name: 'pokemonName',
+              label: 'Specific Pokemon',
+              type: 'text',
+              placeholder: 'e.g., Mewtwo',
+            },
+            {
+              name: 'numberOfRaids',
+              label: 'Number of Raids',
+              type: 'number',
+              min: 1,
+              max: 50,
+              required: true,
+            },
+            {
+              name: 'guaranteedCatch',
+              label: 'Guaranteed catch (+$10/raid)',
+              type: 'boolean',
+            },
+            { name: 'bestIVs', label: 'Best IVs target (90%+)', type: 'boolean' },
+            { name: 'shinyHunt', label: 'Hunt shiny variant', type: 'boolean' },
+            {
+              name: 'platform',
+              label: 'Platform',
+              type: 'select',
+              options: PLATFORMS,
+              required: true,
+            },
+          ],
+          addons: [STREAM_ADDON, PRIORITY_ADDON],
+        },
+        {
+          slug: 'shiny-hunting',
+          name: 'Shiny Hunting',
+          icon: '🌟',
+          description: 'Catch shiny Pokemon with specific traits',
+          estimatedTime: '1-7 days',
+          formFields: [
+            {
+              name: 'pokemonName',
+              label: 'Pokemon Name',
+              type: 'text',
+              placeholder: 'or "Any"',
+              required: true,
+            },
+            {
+              name: 'numberOfShinies',
+              label: 'Number of Shinies',
+              type: 'number',
+              min: 1,
+              max: 20,
+              required: true,
+            },
+            {
+              name: 'method',
+              label: 'Hunting Method',
+              type: 'radio',
+              options: ['Wild encounters', 'Community Day', 'Spotlight Hour', 'Any method'],
+            },
+            {
+              name: 'ivsRequired',
+              label: 'IVs Required',
+              type: 'radio',
+              options: ['Any IVs', '90+ IVs', '100% IVs (Hundo)'],
+            },
+            {
+              name: 'platform',
+              label: 'Platform',
+              type: 'select',
+              options: PLATFORMS,
+              required: true,
+            },
+          ],
+          addons: [STREAM_ADDON],
+        },
+        {
+          slug: 'legendary-catch',
+          name: 'Legendary Catch',
+          icon: '🦅',
+          description: 'Catch specific legendary Pokemon',
+          estimatedTime: '6-72 hours',
+          formFields: [
+            {
+              name: 'pokemonName',
+              label: 'Legendary Pokemon',
+              type: 'text',
+              placeholder: 'e.g., Mewtwo, Rayquaza',
+              required: true,
+            },
+            {
+              name: 'quantity',
+              label: 'How many',
+              type: 'number',
+              min: 1,
+              max: 10,
+              required: true,
+            },
+            {
+              name: 'ivs',
+              label: 'IVs Required',
+              type: 'radio',
+              options: ['Any IVs', '90+ IVs', '100% IVs (Hundo)'],
+            },
+            { name: 'shinyVersion', label: 'Shiny variant', type: 'boolean' },
+            {
+              name: 'specificMoveset',
+              label: 'Specific moveset (optional)',
+              type: 'text',
+            },
+            {
+              name: 'platform',
+              label: 'Platform',
+              type: 'select',
+              options: PLATFORMS,
+              required: true,
+            },
+          ],
+          addons: [STREAM_ADDON, PRIORITY_ADDON],
+        },
+        {
+          slug: 'event-grinding',
+          name: 'Event Grinding',
+          icon: '🎁',
+          description: 'Complete special events and research',
+          estimatedTime: 'Event duration',
+          formFields: [
+            {
+              name: 'eventName',
+              label: 'Event Name',
+              type: 'select',
+              options: [
+                'Community Day',
+                'Spotlight Hour',
+                'GO Battle League',
+                'Season events',
+                'Research Day',
+                'Other',
+              ],
+              required: true,
+            },
+            {
+              name: 'customEvent',
+              label: 'Custom event name',
+              type: 'text',
+              conditional: 'eventName=Other',
+            },
+            {
+              name: 'completionType',
+              label: 'Completion Level',
+              type: 'radio',
+              options: ['Free tasks only', 'Paid ticket research', 'Full completion (all rewards)'],
+            },
+            {
+              name: 'goals',
+              label: 'Specific Goals',
+              type: 'multiselect',
+              options: [
+                'Complete research',
+                'Catch event Pokemon',
+                'Hunt event shinies',
+                'Collect rewards',
+              ],
+            },
+            {
+              name: 'platform',
+              label: 'Platform',
+              type: 'select',
+              options: PLATFORMS,
+              required: true,
+            },
+          ],
+          addons: COMMON_ADDONS,
+        },
+      ],
+    },
   ],
 };
