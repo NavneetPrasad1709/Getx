@@ -90,7 +90,7 @@ export class AuthController {
   ) {
     const cookies = req.cookies as Record<string, string> | undefined;
     const refreshToken = cookies?.refreshToken;
-    return this.auth.logout(userId, refreshToken, res);
+    return this.auth.logout(userId, refreshToken, req, res);
   }
 
   @Public()

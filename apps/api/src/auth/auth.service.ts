@@ -342,6 +342,7 @@ export class AuthService {
   async logout(
     userId: string,
     refreshToken: string | undefined,
+    req: Request,
     res: Response,
   ) {
     if (refreshToken) {
@@ -358,6 +359,8 @@ export class AuthService {
       action: 'auth.logout',
       entity: 'User',
       entityId: userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
     });
 
     return { message: 'Logged out successfully' };
