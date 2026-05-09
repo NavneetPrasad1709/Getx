@@ -3,6 +3,8 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { api } from '@/lib/api';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+
 export interface AuthUser {
   id: string;
   email: string;
@@ -29,10 +31,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Use native fetch (NOT the axios `api` client) so the 401 from a
+  // logged-out visitor on a public page never enters the interceptor's
+  // refresh-and-retry path. This is the single bootstrap auth probe;
+  // every other authenticated request still goes through `api`.
   const refetch = async () => {
     try {
-      const { data } = await api.get<AuthUser>('/auth/me');
-      setUser(data);
+      const res = await fetch(`${API_URL}/auth/me`, { credentials: 'include' });
+      if (res.ok) {
+        const data = (await res.json()) as AuthUser;
+        setUser(data);
+      } else {
+        setUser(null);
+      }
     } catch {
       setUser(null);
     } finally {
