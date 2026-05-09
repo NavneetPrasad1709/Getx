@@ -37,6 +37,12 @@ export function Header() {
             <div className="h-9 w-20 bg-muted/30 animate-pulse rounded-md" />
           ) : isAuthenticated ? (
             <div className="flex items-center gap-2">
+              <Link
+                href="/profile/requests"
+                className="hidden sm:inline text-sm hover:text-primary transition-colors"
+              >
+                My Requests
+              </Link>
               <span className="hidden sm:inline text-sm text-muted-foreground">{user?.name}</span>
               <Button variant="ghost" size="sm" onClick={() => void logout()}>
                 Logout

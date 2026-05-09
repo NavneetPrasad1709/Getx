@@ -8,6 +8,7 @@ import { MailModule } from './mail/mail.module';
 import { AuthModule } from './auth/auth.module';
 import { GamesModule } from './games/games.module';
 import { ListingsModule } from './listings/listings.module';
+import { CustomRequestsModule } from './custom-requests/custom-requests.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { ListingsModule } from './listings/listings.module';
     AuthModule,
     GamesModule,
     ListingsModule,
+    CustomRequestsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
