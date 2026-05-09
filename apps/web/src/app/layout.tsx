@@ -5,8 +5,16 @@ import { QueryProvider } from '@/components/query-provider';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'GETX — Get X. Get gaming.',
-  description: 'Production-grade gaming marketplace.',
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'https://getx.gg'),
+  title: {
+    default: 'GETX — Get X. Get gaming.',
+    template: '%s | GETX',
+  },
+  description: 'The premium gaming marketplace. Verified sellers, secure escrow, instant delivery.',
+  icons: {
+    icon: '/favicon.ico',
+    apple: '/apple-touch-icon.png',
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
