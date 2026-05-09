@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
+import { ZodExceptionFilter } from './common/zod-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { cors: false });
@@ -25,6 +26,8 @@ async function bootstrap() {
 
   // Validation handled per-route by Zod (RegisterSchema.parse, etc.) —
   // skipping the global class-validator ValidationPipe avoids that dep.
+  // ZodError -> 400 with field-level issues (otherwise Nest treats it as 500).
+  app.useGlobalFilters(new ZodExceptionFilter());
 
   app.setGlobalPrefix('api/v1');
 
