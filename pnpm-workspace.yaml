@@ -2,6 +2,12 @@ packages:
   - 'apps/*'
   - 'packages/*'
 
+# Force vulnerable transitive deps to patched versions.
+# postcss < 8.5.10 has GHSA-qx2v-qp2m-jg93 (XSS via unescaped </style> in
+# CSS Stringify output). Pulled in by next 15.5.18's bundled CSS pipeline.
+overrides:
+  postcss: '^8.5.10'
+
 # Post-install build scripts approved to run (pnpm 11+).
 # unrs-resolver: native bindings used by ESLint typescript-eslint resolver.
 # sharp: native image-optimization binary used by Next.js.
