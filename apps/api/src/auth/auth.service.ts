@@ -462,6 +462,7 @@ export class AuthService {
         buyerWallet: true,
         sellerWallet: true,
         pendingEarnings: true,
+        totalSales: true,
         onboardingCompleted: true,
         createdAt: true,
       },
@@ -469,6 +470,42 @@ export class AuthService {
 
     if (!user) throw new NotFoundException();
     return user;
+  }
+
+  async activateSeller(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException();
+    if (user.status !== 'ACTIVE') {
+      throw new BadRequestException('Account not active');
+    }
+
+    if (user.isSeller) {
+      return {
+        message: 'Already activated',
+        user: this.sanitizeUser(user),
+      };
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        isSeller: true,
+        sellerActivatedAt: new Date(),
+      },
+    });
+
+    await this.audit.log({
+      userId,
+      action: 'seller.activated',
+      entity: 'User',
+      entityId: userId,
+    });
+
+    return {
+      message:
+        'Seller mode activated! You can now create listings and submit offers.',
+      user: this.sanitizeUser(updated),
+    };
   }
 
   // ─── helpers ───────────────────────────────────────────

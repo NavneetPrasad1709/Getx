@@ -9,12 +9,23 @@ export interface AuthUser {
   id: string;
   email: string;
   name: string | null;
+  username: string | null;
   role: string;
   country: string;
   emailVerified: string | null;
+  phoneVerified: string | null;
   kycLevel: string;
   kycStatus: string;
   avatar: string | null;
+  isSeller: boolean;
+  sellerRating: number;
+  verifiedTier: string | null;
+  buyerWallet: number;
+  sellerWallet: number;
+  pendingEarnings: number;
+  totalSales: number;
+  onboardingCompleted: boolean;
+  createdAt: string;
 }
 
 interface AuthContextValue {

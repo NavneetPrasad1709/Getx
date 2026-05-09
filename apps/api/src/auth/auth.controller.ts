@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
   Body,
   HttpCode,
   HttpStatus,
@@ -114,5 +115,11 @@ export class AuthController {
   @Get('me')
   async me(@CurrentUser('id') userId: string) {
     return this.auth.me(userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('me/activate-seller')
+  async activateSeller(@CurrentUser('id') userId: string) {
+    return this.auth.activateSeller(userId);
   }
 }

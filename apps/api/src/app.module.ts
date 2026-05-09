@@ -10,6 +10,7 @@ import { GamesModule } from './games/games.module';
 import { ListingsModule } from './listings/listings.module';
 import { CustomRequestsModule } from './custom-requests/custom-requests.module';
 import { UploadsModule } from './uploads/uploads.module';
+import { OffersModule } from './offers/offers.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { UploadsModule } from './uploads/uploads.module';
     ListingsModule,
     CustomRequestsModule,
     UploadsModule,
+    OffersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

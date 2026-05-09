@@ -1,7 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { Prisma } from '@getx/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { ListListingsDto } from './dto/list-listings.dto';
+import { CreateListingDto, UpdateListingDto } from './dto/create-listing.dto';
 
 const LIST_SELECT = {
   id: true,
@@ -73,6 +79,25 @@ const DETAIL_INCLUDE = {
   },
 } satisfies Prisma.ProductListingInclude;
 
+const MY_LIST_SELECT = {
+  id: true,
+  sku: true,
+  slug: true,
+  title: true,
+  tabType: true,
+  productType: true,
+  price: true,
+  currency: true,
+  stock: true,
+  status: true,
+  images: true,
+  attributes: true,
+  viewCount: true,
+  soldCount: true,
+  createdAt: true,
+  game: { select: { slug: true, name: true, icon: true } },
+} satisfies Prisma.ProductListingSelect;
+
 const RELATED_SELECT = {
   id: true,
   slug: true,
@@ -103,6 +128,13 @@ export type ListingDetail = Prisma.ProductListingGetPayload<{
 export type RelatedListing = Prisma.ProductListingGetPayload<{
   select: typeof RELATED_SELECT;
 }>;
+export type MyListingItem = Prisma.ProductListingGetPayload<{
+  select: typeof MY_LIST_SELECT;
+}>;
+export type MyListingDetail = Prisma.ProductListingGetPayload<{
+  include: { game: true };
+}>;
+export type SellerListingRow = Prisma.ProductListingGetPayload<object>;
 
 export interface ListListingsResponse {
   data: ListingListItem[];
@@ -401,5 +433,185 @@ export class ListingsService {
       take: limit,
       select: RELATED_SELECT,
     });
+  }
+
+  async createListing(
+    sellerId: string,
+    dto: CreateListingDto,
+  ): Promise<SellerListingRow> {
+    const game = await this.prisma.game.findUnique({
+      where: { slug: dto.gameSlug },
+    });
+    if (!game) throw new NotFoundException(`Game not found: ${dto.gameSlug}`);
+    if (!game.isActive) throw new BadRequestException('Game not available');
+
+    const seller = await this.prisma.user.findUnique({
+      where: { id: sellerId },
+      select: { isSeller: true, status: true },
+    });
+    if (!seller) throw new NotFoundException();
+    if (seller.status !== 'ACTIVE') {
+      throw new BadRequestException('Account not active');
+    }
+    if (!seller.isSeller) {
+      throw new BadRequestException('Seller mode not activated');
+    }
+
+    const tabPrefix =
+      dto.tabType === 'ACCOUNTS'
+        ? 'ACC'
+        : dto.tabType === 'TOP_UPS'
+          ? 'TOP'
+          : 'ITM';
+    const gamePrefix = game.slug.toUpperCase().replace(/-/g, '').slice(0, 3);
+    const count = await this.prisma.productListing.count({
+      where: { sku: { startsWith: `GTX-${gamePrefix}-${tabPrefix}-` } },
+    });
+    const sku = `GTX-${gamePrefix}-${tabPrefix}-${String(count + 1).padStart(4, '0')}`;
+
+    const baseSlug = dto.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 80);
+    let slug = baseSlug;
+    let attempt = 1;
+    while (await this.prisma.productListing.findUnique({ where: { slug } })) {
+      attempt += 1;
+      slug = `${baseSlug}-${attempt}`;
+    }
+
+    const listing = await this.prisma.productListing.create({
+      data: {
+        sku,
+        slug,
+        sellerId,
+        gameId: game.id,
+        tabType: dto.tabType,
+        productType: dto.productType,
+        title: dto.title,
+        description: dto.description,
+        price: dto.price,
+        currency: dto.currency,
+        originalPrice: dto.originalPrice,
+        discountPercent: dto.originalPrice
+          ? Math.round(
+              ((dto.originalPrice - dto.price) / dto.originalPrice) * 100,
+            )
+          : null,
+        stock: dto.stock,
+        images: dto.images,
+        videoUrl: dto.videoUrl,
+        attributes: dto.attributes as Prisma.InputJsonValue,
+        deliveryType: dto.deliveryType,
+        deliveryTime: dto.deliveryTime,
+        searchTags: dto.searchTags,
+        status: dto.publish ? 'ACTIVE' : 'DRAFT',
+      },
+    });
+
+    if (dto.publish) {
+      await this.prisma.game.update({
+        where: { id: game.id },
+        data: { totalListings: { increment: 1 } },
+      });
+    }
+
+    return listing;
+  }
+
+  async updateListing(
+    sellerId: string,
+    listingId: string,
+    dto: UpdateListingDto,
+  ): Promise<SellerListingRow> {
+    const listing = await this.prisma.productListing.findUnique({
+      where: { id: listingId },
+    });
+    if (!listing) throw new NotFoundException();
+    if (listing.sellerId !== sellerId) {
+      throw new ForbiddenException('Not your listing');
+    }
+    if (listing.deletedAt) {
+      throw new BadRequestException('Listing deleted');
+    }
+
+    const data: Prisma.ProductListingUpdateInput = {};
+    if (dto.title !== undefined) data.title = dto.title;
+    if (dto.description !== undefined) data.description = dto.description;
+    if (dto.price !== undefined) data.price = dto.price;
+    if (dto.originalPrice !== undefined) {
+      data.originalPrice = dto.originalPrice;
+      const finalPrice = dto.price ?? listing.price;
+      if (dto.originalPrice && finalPrice) {
+        data.discountPercent = Math.round(
+          ((dto.originalPrice - finalPrice) / dto.originalPrice) * 100,
+        );
+      }
+    }
+    if (dto.stock !== undefined) data.stock = dto.stock;
+    if (dto.images !== undefined) data.images = dto.images;
+    if (dto.videoUrl !== undefined) data.videoUrl = dto.videoUrl;
+    if (dto.attributes !== undefined) {
+      data.attributes = dto.attributes as Prisma.InputJsonValue;
+    }
+    if (dto.deliveryType !== undefined) data.deliveryType = dto.deliveryType;
+    if (dto.deliveryTime !== undefined) data.deliveryTime = dto.deliveryTime;
+    if (dto.searchTags !== undefined) data.searchTags = dto.searchTags;
+    if (dto.publish !== undefined) {
+      data.status = dto.publish ? 'ACTIVE' : 'PAUSED';
+    }
+
+    return this.prisma.productListing.update({
+      where: { id: listingId },
+      data,
+    });
+  }
+
+  async deleteListing(sellerId: string, listingId: string) {
+    const listing = await this.prisma.productListing.findUnique({
+      where: { id: listingId },
+    });
+    if (!listing) throw new NotFoundException();
+    if (listing.sellerId !== sellerId) {
+      throw new ForbiddenException('Not your listing');
+    }
+
+    const wasActive = listing.status === 'ACTIVE' && !listing.deletedAt;
+
+    await this.prisma.productListing.update({
+      where: { id: listingId },
+      data: {
+        deletedAt: new Date(),
+        status: 'REMOVED',
+      },
+    });
+
+    if (wasActive) {
+      await this.prisma.game.update({
+        where: { id: listing.gameId },
+        data: { totalListings: { decrement: 1 } },
+      });
+    }
+
+    return { success: true };
+  }
+
+  async getMyListings(sellerId: string): Promise<MyListingItem[]> {
+    return this.prisma.productListing.findMany({
+      where: { sellerId, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      select: MY_LIST_SELECT,
+    });
+  }
+
+  async getMyListing(sellerId: string, id: string): Promise<MyListingDetail> {
+    const listing = await this.prisma.productListing.findUnique({
+      where: { id },
+      include: { game: true },
+    });
+    if (!listing) throw new NotFoundException();
+    if (listing.sellerId !== sellerId) throw new ForbiddenException();
+    return listing;
   }
 }
