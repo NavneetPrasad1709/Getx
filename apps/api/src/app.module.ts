@@ -11,6 +11,8 @@ import { ListingsModule } from './listings/listings.module';
 import { CustomRequestsModule } from './custom-requests/custom-requests.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { OffersModule } from './offers/offers.module';
+import { OrdersModule } from './orders/orders.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -27,6 +29,8 @@ import { OffersModule } from './offers/offers.module';
     CustomRequestsModule,
     UploadsModule,
     OffersModule,
+    OrdersModule,
+    PaymentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

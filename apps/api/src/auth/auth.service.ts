@@ -462,6 +462,7 @@ export class AuthService {
         buyerWallet: true,
         sellerWallet: true,
         pendingEarnings: true,
+        totalEarned: true,
         totalSales: true,
         onboardingCompleted: true,
         createdAt: true,

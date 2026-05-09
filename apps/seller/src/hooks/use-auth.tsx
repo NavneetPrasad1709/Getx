@@ -23,6 +23,7 @@ export interface AuthUser {
   buyerWallet: number;
   sellerWallet: number;
   pendingEarnings: number;
+  totalEarned: number;
   totalSales: number;
   onboardingCompleted: boolean;
   createdAt: string;

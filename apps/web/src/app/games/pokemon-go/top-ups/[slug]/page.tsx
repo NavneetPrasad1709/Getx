@@ -6,7 +6,9 @@ import Link from 'next/link';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Skeleton, toast } from '@getx/ui';
 import { Header } from '@/components/header';
 import { LandingFooter } from '@/components/landing/landing-footer';
+import { AxiosError } from 'axios';
 import { useListing, useRelatedListings, type ListingDetail } from '@/hooks/use-listings';
+import { useCreateOrderFromListing } from '@/hooks/use-orders';
 import { useAuth } from '@/hooks/use-auth';
 import { ListingCard } from '@/components/listings/listing-card';
 
@@ -30,17 +32,28 @@ export default function TopUpDetailPage() {
 
   const { data: listing, isLoading, error } = useListing(slug);
   const { data: related } = useRelatedListings(slug);
+  const createOrder = useCreateOrderFromListing();
 
   const [selectedImage, setSelectedImage] = useState(0);
 
-  const handleBuy = () => {
+  const handleBuy = async () => {
     if (!isAuthenticated) {
       toast.info('Please login to buy');
       const redirect = encodeURIComponent(window.location.pathname);
       router.push(`/auth/login?next=${redirect}`);
       return;
     }
-    toast.info('Cart & checkout coming in Prompt 12');
+    if (!listing) return;
+    try {
+      const order = await createOrder.mutateAsync({ listingId: listing.id });
+      router.push(`/orders/${order.id}`);
+    } catch (err) {
+      const msg =
+        err instanceof AxiosError
+          ? (err.response?.data as { message?: string } | undefined)?.message
+          : null;
+      toast.error(msg ?? 'Failed to create order');
+    }
   };
 
   if (isLoading) {

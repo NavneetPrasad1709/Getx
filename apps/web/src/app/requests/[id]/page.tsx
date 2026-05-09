@@ -12,6 +12,7 @@ import {
   type RequestOffer,
   type RequestStatus,
 } from '@/hooks/use-custom-requests';
+import { useCreateOrderFromOffer } from '@/hooks/use-orders';
 import { useAuth } from '@/hooks/use-auth';
 
 const TIER_COLORS: Record<string, string> = {
@@ -42,6 +43,7 @@ export default function RequestDetailPage() {
 
   const { data: request, isLoading } = useRequest(id);
   const cancelMutation = useCancelRequest();
+  const createOrderFromOffer = useCreateOrderFromOffer();
 
   const isOwner = !!user && !!request && user.id === request.buyer.id;
 
@@ -60,8 +62,18 @@ export default function RequestDetailPage() {
     }
   };
 
-  const handleAcceptOffer = () => {
-    toast.info('Offer acceptance + payment coming in Prompt 12');
+  const handleAcceptOffer = async (offerId: string) => {
+    if (!confirm('Accept this offer and proceed to checkout?')) return;
+    try {
+      const order = await createOrderFromOffer.mutateAsync({ offerId });
+      router.push(`/orders/${order.id}`);
+    } catch (error) {
+      const msg =
+        error instanceof AxiosError
+          ? (error.response?.data as { message?: string } | undefined)?.message
+          : null;
+      toast.error(msg ?? 'Failed to accept offer');
+    }
   };
 
   if (isLoading) {
@@ -205,7 +217,7 @@ export default function RequestDetailPage() {
                         key={offer.id}
                         offer={offer}
                         canAccept={isOwner && request.status === 'OPEN'}
-                        onAccept={handleAcceptOffer}
+                        onAccept={() => handleAcceptOffer(offer.id)}
                       />
                     ))}
                   </div>

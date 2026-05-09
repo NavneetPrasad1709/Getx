@@ -38,6 +38,12 @@ export function Header() {
           ) : isAuthenticated ? (
             <div className="flex items-center gap-2">
               <Link
+                href="/profile/orders"
+                className="hidden sm:inline text-sm hover:text-primary transition-colors"
+              >
+                My Orders
+              </Link>
+              <Link
                 href="/profile/requests"
                 className="hidden sm:inline text-sm hover:text-primary transition-colors"
               >
