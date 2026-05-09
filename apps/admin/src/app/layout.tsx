@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { ThemeProvider, Toaster, PageTransition } from '@getx/ui';
+import { AuthProvider } from '@/hooks/use-auth';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -13,7 +14,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased" suppressHydrationWarning>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
-          <PageTransition>{children}</PageTransition>
+          <AuthProvider>
+            <PageTransition>{children}</PageTransition>
+          </AuthProvider>
           <Toaster />
         </ThemeProvider>
       </body>

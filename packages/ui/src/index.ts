@@ -14,6 +14,7 @@ export * from './components/tabs';
 export * from './components/select';
 export * from './components/avatar';
 export * from './components/toaster';
+export { toast } from 'sonner';
 
 // Custom premium
 export * from './components/magnetic-button';
