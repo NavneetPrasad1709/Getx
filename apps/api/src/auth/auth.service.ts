@@ -539,8 +539,17 @@ export class AuthService {
   }
 
   private clearAuthCookies(res: Response) {
+    const isProd = this.config.get<string>('NODE_ENV') === 'production';
     const domain = this.config.get<string>('COOKIE_DOMAIN');
-    const opts = domain ? { domain } : {};
+
+    const opts = {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: 'lax' as const,
+      path: '/',
+      ...(domain ? { domain } : {}),
+    };
+
     res.clearCookie('accessToken', opts);
     res.clearCookie('refreshToken', opts);
   }
