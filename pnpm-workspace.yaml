@@ -8,6 +8,11 @@ packages:
 # @nestjs/core: prints donation banner — safe.
 allowBuilds:
   '@nestjs/core': true
+  '@prisma/client': true
+  '@prisma/engines': true
+  bcrypt: false
+  esbuild: true
+  prisma: true
   sharp: true
   unrs-resolver: true
 
@@ -17,7 +22,6 @@ onlyBuiltDependencies:
   - '@prisma/client'
   - '@prisma/engines'
   - '@swc/core'
-  - 'bcrypt'
   - 'esbuild'
   - 'prisma'
   - 'sharp'

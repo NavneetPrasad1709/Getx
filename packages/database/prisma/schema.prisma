@@ -1,0 +1,1173 @@
+// GETX — Production database schema
+// Marketplace targeting 20 lakh users. Multi-game, hybrid (browse + reverse),
+// USD-primary with INR conversion at payout, lazy KYC verification.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  USERS & AUTHENTICATION
+// ═══════════════════════════════════════════════════════════════
+
+model User {
+  id String @id @default(cuid())
+
+  // Authentication
+  email         String    @unique
+  emailVerified DateTime?
+  password      String
+
+  // Phone (optional, used for SMS OTP)
+  phone         String?   @unique
+  phoneVerified DateTime?
+
+  // Profile
+  name     String?
+  username String? @unique
+  avatar   String?
+  bio      String? @db.VarChar(500)
+
+  // Role (default BOTH — lazy verification strategy)
+  role UserRole @default(BOTH)
+
+  // Country & Currency (auto-detected from IP at signup)
+  country           String // ISO 2-letter: "IN", "US", "PH"
+  preferredCurrency String @default("USD")
+
+  // ═══ KYC (country-aware, lazy) ═══
+  kycLevel           KycLevel  @default(LEVEL_0)
+  kycStatus          KycStatus @default(NONE)
+  kycProvider        String? // "sumsub", "digio", "manual"
+  kycSubmittedAt     DateTime?
+  kycVerifiedAt      DateTime?
+  kycRejectionReason String?   @db.Text
+
+  // Sumsub (global users)
+  sumsubApplicantId    String? @unique
+  sumsubExternalUserId String? @unique
+
+  // Indian (PII hashed — never plain text)
+  aadhaarHash String? @unique
+  panHash     String? @unique
+
+  documentType    DocumentType?
+  documentCountry String?
+
+  // ═══ Seller profile ═══
+  isSeller          Boolean       @default(false) // Activated on first listing/offer
+  sellerActivatedAt DateTime?
+  sellerRating      Float         @default(0)
+  totalSales        Int           @default(0)
+  responseTimeMin   Int? // Avg response time in minutes
+  completionRate    Float? // % of completed orders
+  isVerified        Boolean       @default(false)
+  verifiedTier      VerifiedTier?
+
+  // ═══ Wallets (USD only — convert to INR at withdrawal) ═══
+  buyerWallet     Float @default(0)
+  sellerWallet    Float @default(0) // Available to withdraw
+  pendingEarnings Float @default(0) // In escrow
+  totalEarned     Float @default(0)
+  totalSpent      Float @default(0)
+
+  // ═══ Bank/payment details (encrypted) ═══
+  upiId                String?
+  bankAccountEncrypted String? // JSON-encrypted: {accountNumber, ifsc, bankName, holderName}
+  paypalEmail          String?
+  wiseEmail            String?
+
+  // ═══ Account status ═══
+  status         UserStatus @default(ACTIVE)
+  banReason      String?    @db.Text
+  bannedAt       DateTime?
+  bannedBy       String? // Admin user ID
+  suspendedUntil DateTime?
+
+  // ═══ Security ═══
+  twoFactorEnabled   Boolean   @default(false)
+  twoFactorSecret    String? // TOTP secret (encrypted)
+  lastLoginAt        DateTime?
+  lastLoginIp        String?
+  lastLoginUserAgent String?
+  failedLoginCount   Int       @default(0)
+  lockedUntil        DateTime?
+  passwordChangedAt  DateTime? @default(now())
+
+  // ═══ Notification prefs ═══
+  emailNotifications Boolean @default(true)
+  pushNotifications  Boolean @default(true)
+  smsNotifications   Boolean @default(true)
+  marketingOptIn     Boolean @default(false)
+
+  // ═══ Onboarding ═══
+  onboardingCompleted Boolean @default(false)
+  onboardingStep      String?
+
+  // ═══ Relations ═══
+  sessions           Session[]
+  refreshTokens      RefreshToken[]
+  passwordResets     PasswordReset[]
+  emailVerifications EmailVerification[]
+  phoneVerifications PhoneVerification[]
+
+  customRequests  CustomRequest[]
+  productListings ProductListing[]
+
+  buyerOrders  Order[] @relation("BuyerOrders")
+  sellerOrders Order[] @relation("SellerOrders")
+
+  buyerOffers  Offer[] @relation("OfferBuyer")
+  sellerOffers Offer[] @relation("OfferSeller")
+
+  reviewsAuthored Review[] @relation("ReviewsAuthored")
+  reviewsReceived Review[] @relation("ReviewsReceived")
+
+  messages      Message[]
+  notifications Notification[]
+
+  walletTransactions WalletTransaction[]
+  withdrawals        Withdrawal[]
+
+  disputesCreated  Dispute[] @relation("DisputeCreator")
+  disputesAssigned Dispute[] @relation("DisputeAssignee")
+
+  auditLogs    AuditLog[]
+  kycDocuments KycDocument[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  @@index([role, status])
+  @@index([country])
+  @@index([sellerRating])
+  @@index([kycStatus])
+  @@index([email])
+  @@index([createdAt])
+}
+
+enum UserRole {
+  BUYER
+  SELLER
+  BOTH
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+  DELETED
+}
+
+enum KycLevel {
+  LEVEL_0 // No KYC (default)
+  LEVEL_1 // Phone verified
+  LEVEL_2 // ID verified (Sumsub Standard)
+  LEVEL_3 // Enhanced (address + source of funds)
+}
+
+enum KycStatus {
+  NONE
+  PENDING
+  SUBMITTED
+  IN_REVIEW
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
+enum DocumentType {
+  AADHAAR_CARD // India
+  PAN_CARD // India
+  PASSPORT // Global
+  DRIVERS_LICENSE // US/UK/EU
+  NATIONAL_ID // Most countries
+  RESIDENCE_PERMIT // EU residents
+  VOTER_ID // India
+}
+
+enum VerifiedTier {
+  BASIC // KYC done
+  VERIFIED // 5+ orders, 4.5+ rating
+  PREMIUM // 50+ orders, 4.8+ rating
+  ELITE // 200+ orders, 4.9+ rating
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  AUTHENTICATION HELPERS
+// ═══════════════════════════════════════════════════════════════
+
+model Session {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  token      String  @unique
+  ipAddress  String?
+  userAgent  String?
+  deviceInfo Json?
+
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([token])
+}
+
+model RefreshToken {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  token     String    @unique
+  family    String // Token family for rotation detection
+  revoked   Boolean   @default(false)
+  revokedAt DateTime?
+
+  ipAddress String?
+  userAgent String?
+
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([family])
+  @@index([token])
+}
+
+model EmailVerification {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  email    String
+  otp      String
+  attempts Int    @default(0)
+
+  verifiedAt DateTime?
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@index([email])
+  @@index([expiresAt])
+}
+
+model PhoneVerification {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  phone    String
+  otp      String
+  attempts Int    @default(0)
+
+  verifiedAt DateTime?
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@index([phone])
+}
+
+model PasswordReset {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  token String  @unique
+  used  Boolean @default(false)
+
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  KYC DOCUMENTS
+// ═══════════════════════════════════════════════════════════════
+
+model KycDocument {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  documentType   DocumentType
+  documentNumber String? // Hashed/encrypted
+
+  // R2 URLs (encrypted access)
+  frontImageUrl String
+  backImageUrl  String?
+  selfieUrl     String?
+
+  status      KycStatus @default(SUBMITTED)
+  reviewNotes String?   @db.Text
+  reviewedBy  String?
+  reviewedAt  DateTime?
+
+  expiresAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([status])
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  GAMES & CATEGORIES
+// ═══════════════════════════════════════════════════════════════
+
+model Game {
+  id          String  @id @default(cuid())
+  slug        String  @unique // "pokemon-go", "roblox"
+  name        String
+  shortName   String?
+  description String? @db.Text
+
+  icon    String // R2 URL
+  banner  String?
+  ogImage String?
+
+  isActive     Boolean   @default(true)
+  isLaunched   Boolean   @default(false)
+  launchedAt   DateTime?
+  comingSoonAt DateTime?
+
+  sortOrder Int @default(0)
+
+  // SEO
+  seoTitle       String?
+  seoDescription String?
+
+  // Game-specific config (mirrors packages/games)
+  fieldsConfig Json
+
+  // Stats (denormalized for performance)
+  totalListings Int @default(0)
+  totalOrders   Int @default(0)
+  totalSellers  Int @default(0)
+
+  customRequests  CustomRequest[]
+  productListings ProductListing[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
+  @@index([slug])
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CUSTOM REQUESTS (REVERSE marketplace — buyer posts, sellers bid)
+// ═══════════════════════════════════════════════════════════════
+
+model CustomRequest {
+  id String @id @default(cuid())
+
+  requestNumber String @unique // CR-2026-00001
+
+  buyerId String
+  buyer   User   @relation(fields: [buyerId], references: [id])
+
+  gameId String
+  game   Game   @relation(fields: [gameId], references: [id])
+
+  tabType     TabType
+  subCategory String? // For boosting: "level-up", "raid-service"
+
+  title       String @db.VarChar(150)
+  description String @db.Text
+
+  // Photos uploaded by buyer (R2 URLs, max 5)
+  images String[]
+
+  // Budget (USD)
+  budgetMin Float
+  budgetMax Float
+  currency  String @default("USD")
+
+  // Tab-specific attributes (JSON for flexibility)
+  attributes Json
+  addons     Json?
+
+  // Delivery
+  deliveryDays Int      @default(7)
+  expiresAt    DateTime
+
+  platform String? // "iOS", "Android", "PC"
+
+  status RequestStatus @default(OPEN)
+
+  // Engagement
+  viewCount       Int      @default(0)
+  offerCount      Int      @default(0)
+  uniqueViewerIds String[]
+
+  // Admin
+  isFlagged  Boolean @default(false)
+  flagReason String?
+
+  offers Offer[]
+  order  Order?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([gameId, tabType, status])
+  @@index([buyerId])
+  @@index([status, expiresAt])
+  @@index([createdAt])
+  @@index([requestNumber])
+}
+
+enum TabType {
+  ACCOUNTS
+  TOP_UPS
+  ITEMS
+  BOOSTING
+}
+
+enum RequestStatus {
+  DRAFT
+  OPEN // Accepting offers
+  AWAITING_CHOICE // Has offers, buyer choosing
+  IN_PROGRESS // Buyer accepted, seller working
+  DELIVERED
+  COMPLETED
+  CANCELLED
+  EXPIRED
+  DISPUTED
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  OFFERS (sellers' bids on Custom Requests)
+// ═══════════════════════════════════════════════════════════════
+
+model Offer {
+  id String @id @default(cuid())
+
+  requestId String
+  request   CustomRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  sellerId String
+  seller   User   @relation("OfferSeller", fields: [sellerId], references: [id])
+
+  // Denormalized for queries
+  buyerId String
+  buyer   User   @relation("OfferBuyer", fields: [buyerId], references: [id])
+
+  // Pricing (USD)
+  price    Float
+  currency String @default("USD")
+
+  deliveryHours Int
+
+  message String @db.Text
+
+  status OfferStatus @default(PENDING)
+
+  expiresAt DateTime
+
+  orderId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([requestId, sellerId])
+  @@index([requestId, status])
+  @@index([sellerId, status])
+  @@index([expiresAt])
+}
+
+enum OfferStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+  EXPIRED
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PRODUCT LISTINGS (BROWSE marketplace — sellers list, buyers browse)
+// ═══════════════════════════════════════════════════════════════
+
+model ProductListing {
+  id String @id @default(cuid())
+
+  sku String @unique
+
+  sellerId String
+  seller   User   @relation(fields: [sellerId], references: [id])
+
+  gameId String
+  game   Game   @relation(fields: [gameId], references: [id])
+
+  tabType     TabType
+  productType String // "pokecoins", "items-bundle", "account"
+
+  title       String @db.VarChar(150)
+  description String @db.Text
+
+  attributes Json
+
+  images   String[]
+  videoUrl String?
+
+  // Pricing (USD)
+  price           Float
+  currency        String @default("USD")
+  originalPrice   Float?
+  discountPercent Int?
+
+  // Stock
+  stock         Int @default(1) // -1 = unlimited
+  soldCount     Int @default(0)
+  reservedCount Int @default(0)
+
+  deliveryType DeliveryType
+  deliveryTime String? // "Instant", "Within 24h"
+
+  status          ListingStatus @default(DRAFT)
+  rejectionReason String?       @db.Text
+
+  // Engagement
+  viewCount     Int @default(0)
+  favoriteCount Int @default(0)
+  shareCount    Int @default(0)
+
+  // SEO
+  slug           String? @unique
+  seoTitle       String?
+  seoDescription String?
+
+  isFeatured    Boolean   @default(false)
+  featuredUntil DateTime?
+
+  searchTags String[]
+
+  orders Order[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([gameId, tabType, status])
+  @@index([sellerId, status])
+  @@index([status, createdAt])
+  @@index([price])
+  @@index([sku])
+}
+
+enum DeliveryType {
+  INSTANT // Auto-delivery (e.g., gift code)
+  MANUAL // Seller manually delivers
+  SERVICE // Time-based service (boosting)
+}
+
+enum ListingStatus {
+  DRAFT
+  PENDING_REVIEW
+  ACTIVE
+  PAUSED
+  SOLD_OUT
+  REMOVED
+  REJECTED
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  ORDERS (from CustomRequest OR ProductListing)
+// ═══════════════════════════════════════════════════════════════
+
+model Order {
+  id          String @id @default(cuid())
+  orderNumber String @unique // GTX-2026-00001
+
+  // Source (one of these)
+  customRequestId  String?         @unique
+  customRequest    CustomRequest?  @relation(fields: [customRequestId], references: [id])
+  productListingId String?
+  productListing   ProductListing? @relation(fields: [productListingId], references: [id])
+
+  // Offer (if from custom request)
+  offerId String? @unique
+
+  // Parties
+  buyerId  String
+  buyer    User   @relation("BuyerOrders", fields: [buyerId], references: [id])
+  sellerId String
+  seller   User   @relation("SellerOrders", fields: [sellerId], references: [id])
+
+  // ═══ Pricing breakdown (USD) ═══
+  amount     Float // Order amount (what was agreed)
+  buyerFee   Float // Platform fee (8%)
+  buyerTotal Float // amount + buyerFee
+
+  sellerCommission Float // Platform commission (10%)
+  sellerAmount     Float // amount - commission
+
+  // ═══ FX (locked at payment time) ═══
+  fxRate          Float?
+  fxMargin        Float?
+  fxLockedAt      DateTime?
+  sellerAmountInr Float?
+
+  currency String @default("USD")
+
+  status       OrderStatus  @default(PENDING)
+  escrowStatus EscrowStatus @default(PENDING)
+
+  // ═══ Payment provider ═══
+  paymentProvider      PaymentProvider?
+  paymentMethod        String? // "card", "upi", "paypal", "crypto"
+  paymentTransactionId String?
+  paymentCapturedAt    DateTime?
+  paymentMetadata      Json?
+
+  // ═══ Delivery ═══
+  deliveryDeadline DateTime?
+  deliveredAt      DateTime?
+  deliveryProof    Json? // {images: [], notes: "", credentials: encrypted}
+  confirmedAt      DateTime?
+  autoReleaseAt    DateTime? // 3 days after delivery
+
+  disputeId String?
+
+  // ═══ Refund ═══
+  refundedAt          DateTime?
+  refundReason        String?   @db.Text
+  refundAmount        Float?
+  refundTransactionId String?
+
+  // ═══ Cancellation ═══
+  cancelledAt        DateTime?
+  cancelledBy        String?
+  cancellationReason String?   @db.Text
+
+  // ═══ Buyer info (snapshot for compliance) ═══
+  buyerCountry String?
+  buyerIp      String?
+
+  messages Message[]
+  reviews  Review[]
+  payouts  Payout[]
+  disputes Dispute[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([orderNumber])
+  @@index([autoReleaseAt])
+}
+
+enum OrderStatus {
+  PENDING // Awaiting payment
+  PAID // Money in escrow
+  IN_PROGRESS // Seller working
+  DELIVERED // Seller delivered
+  CONFIRMED // Buyer confirmed
+  COMPLETED // Money released to seller
+  CANCELLED
+  DISPUTED
+  REFUNDED
+}
+
+enum EscrowStatus {
+  PENDING
+  HELD // In GETX escrow
+  RELEASED // To seller wallet
+  REFUNDED // Back to buyer
+  PARTIAL // Split decision
+}
+
+enum PaymentProvider {
+  PADDLE // Merchant of Record (primary)
+  RAZORPAY // International (after KYC)
+  PAYPAL // Backup
+  CRYPTO // USDT/USDC
+  STRIPE // Future
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  MESSAGES (order-specific chat)
+// ═══════════════════════════════════════════════════════════════
+
+model Message {
+  id String @id @default(cuid())
+
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  senderId String
+  sender   User   @relation(fields: [senderId], references: [id])
+
+  type    MessageType @default(TEXT)
+  content String      @db.Text
+
+  attachments String[]
+
+  // For credentials (encrypted)
+  encryptedContent String? @db.Text
+
+  // System messages (status updates)
+  isSystem     Boolean @default(false)
+  systemAction String? // "order.delivered", "order.confirmed"
+
+  read   Boolean   @default(false)
+  readAt DateTime?
+
+  isHidden  Boolean @default(false)
+  flagCount Int     @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId, createdAt])
+  @@index([senderId])
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  CREDENTIALS // Special: account credentials (encrypted)
+  SYSTEM
+  OFFER
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  REVIEWS
+// ═══════════════════════════════════════════════════════════════
+
+model Review {
+  id String @id @default(cuid())
+
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id])
+
+  authorId String
+  author   User   @relation("ReviewsAuthored", fields: [authorId], references: [id])
+
+  targetId String
+  target   User   @relation("ReviewsReceived", fields: [targetId], references: [id])
+
+  rating  Int     @db.SmallInt // 1-5
+  comment String? @db.Text
+
+  ratingCommunication Int? @db.SmallInt
+  ratingDelivery      Int? @db.SmallInt
+  ratingValue         Int? @db.SmallInt
+
+  isHidden    Boolean  @default(false)
+  flagCount   Int      @default(0)
+  flagReasons String[]
+
+  response    String?   @db.Text
+  respondedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([orderId, authorId])
+  @@index([targetId, isHidden])
+  @@index([authorId])
+  @@index([rating])
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  WALLET & WITHDRAWALS
+// ═══════════════════════════════════════════════════════════════
+
+model WalletTransaction {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  type     TxnType
+  amount   Float
+  currency String  @default("USD")
+
+  orderId      String?
+  withdrawalId String?
+  refundId     String?
+
+  // Balance tracking (for audit)
+  balanceBefore Float
+  balanceAfter  Float
+
+  description String
+  metadata    Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([type])
+  @@index([orderId])
+  @@index([withdrawalId])
+}
+
+enum TxnType {
+  ORDER_RELEASED
+  WITHDRAWAL
+  WITHDRAWAL_FEE
+  REFUND
+  CHARGEBACK
+  BONUS
+  ADJUSTMENT
+  REFERRAL
+}
+
+model Withdrawal {
+  id               String @id @default(cuid())
+  withdrawalNumber String @unique // WD-2026-00001
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  // Amounts (USD)
+  amount    Float
+  fee       Float
+  netAmount Float
+
+  // FX (for INR conversion)
+  fxRate       Float
+  fxProvider   String? // "wise", "razorpayx"
+  amountInr    Float?
+  netAmountInr Float?
+
+  method WithdrawalMethod
+
+  // Method-specific (encrypted)
+  upiId                String?
+  bankAccountLast4     String?
+  bankIfsc             String?
+  bankAccountEncrypted String?
+  paypalEmail          String?
+  wiseEmail            String?
+
+  status WithdrawalStatus @default(PENDING)
+
+  providerTransactionId String?
+  providerName          String?
+
+  rejectionReason String?   @db.Text
+  reviewedBy      String?
+  reviewedAt      DateTime?
+
+  requestedAt DateTime  @default(now())
+  approvedAt  DateTime?
+  processedAt DateTime?
+  completedAt DateTime?
+  failedAt    DateTime?
+  failReason  String?
+
+  @@index([userId, status])
+  @@index([status, requestedAt])
+  @@index([withdrawalNumber])
+}
+
+enum WithdrawalMethod {
+  UPI
+  BANK_TRANSFER_IN // Indian bank
+  BANK_TRANSFER_INTL // International
+  PAYPAL
+  WISE
+  CRYPTO_USDT
+  CRYPTO_USDC
+}
+
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  PROCESSING
+  COMPLETED
+  FAILED
+  REJECTED
+  CANCELLED
+}
+
+model Payout {
+  id String @id @default(cuid())
+
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id])
+
+  sellerId String
+  amount   Float
+  currency String
+
+  status PayoutStatus @default(PENDING)
+
+  initiatedAt DateTime?
+  completedAt DateTime?
+  failedAt    DateTime?
+  failReason  String?
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([sellerId])
+  @@index([status])
+}
+
+enum PayoutStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  DISPUTES
+// ═══════════════════════════════════════════════════════════════
+
+model Dispute {
+  id            String @id @default(cuid())
+  disputeNumber String @unique // DSP-2026-00001
+
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id])
+
+  creatorId String
+  creator   User   @relation("DisputeCreator", fields: [creatorId], references: [id])
+
+  assigneeId String?
+  assignee   User?   @relation("DisputeAssignee", fields: [assigneeId], references: [id])
+
+  reason      DisputeReason
+  description String        @db.Text
+  evidence    String[]
+
+  // Counter-claim
+  counterClaim       String?   @db.Text
+  counterEvidence    String[]
+  counterRespondedAt DateTime?
+
+  status   DisputeStatus   @default(OPEN)
+  priority DisputePriority @default(NORMAL)
+
+  // Resolution
+  resolvedAt      DateTime?
+  resolvedBy      String? // Admin user ID
+  resolution      DisputeResolution?
+  resolutionNotes String?            @db.Text
+  refundAmount    Float?
+
+  // SLA tracking
+  firstResponseAt  DateTime?
+  responseDeadline DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([status])
+  @@index([assigneeId])
+  @@index([priority, status])
+}
+
+enum DisputeReason {
+  NOT_DELIVERED
+  WRONG_ITEM
+  ACCOUNT_RECOVERED
+  FRAUDULENT
+  CHARGEBACK
+  POOR_QUALITY
+  COMMUNICATION_ISSUE
+  OTHER
+}
+
+enum DisputeStatus {
+  OPEN
+  REVIEWING
+  AWAITING_RESPONSE
+  RESOLVED
+  ESCALATED
+  CLOSED
+}
+
+enum DisputeResolution {
+  REFUND_BUYER
+  RELEASE_TO_SELLER
+  PARTIAL_REFUND
+  NO_ACTION
+  RETURN_GOODS
+}
+
+enum DisputePriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  NOTIFICATIONS
+// ═══════════════════════════════════════════════════════════════
+
+model Notification {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type     NotificationType
+  title    String
+  message  String           @db.Text
+  link     String?
+  metadata Json?
+
+  imageUrl String?
+
+  read   Boolean   @default(false)
+  readAt DateTime?
+
+  // Channels sent to
+  emailSent Boolean @default(false)
+  pushSent  Boolean @default(false)
+  smsSent   Boolean @default(false)
+
+  emailError String?
+  pushError  String?
+  smsError   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, read, createdAt])
+  @@index([type])
+}
+
+enum NotificationType {
+  // Orders
+  ORDER_CREATED
+  ORDER_PAID
+  ORDER_IN_PROGRESS
+  ORDER_DELIVERED
+  ORDER_CONFIRMED
+  ORDER_COMPLETED
+  ORDER_CANCELLED
+
+  // Offers
+  OFFER_RECEIVED
+  OFFER_ACCEPTED
+  OFFER_REJECTED
+  OFFER_EXPIRED
+
+  // Custom Requests
+  REQUEST_NEW_MATCH // For sellers
+  REQUEST_EXPIRING // For buyers
+  REQUEST_NEW_OFFER // For buyers
+
+  // Payments
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  PAYMENT_DISPUTED
+
+  // Withdrawals
+  WITHDRAWAL_REQUESTED
+  WITHDRAWAL_APPROVED
+  WITHDRAWAL_PROCESSED
+  WITHDRAWAL_FAILED
+
+  // KYC
+  KYC_APPROVED
+  KYC_REJECTED
+  KYC_REQUIRED
+  KYC_EXPIRING
+
+  // Disputes
+  DISPUTE_OPENED
+  DISPUTE_RESPONSE
+  DISPUTE_RESOLVED
+
+  // Communication
+  NEW_MESSAGE
+  NEW_REVIEW
+  REVIEW_RESPONSE
+
+  // System
+  SYSTEM_ALERT
+  ACCOUNT_SECURITY
+  PROMOTIONAL
+  REFERRAL
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  AUDIT LOG (CRITICAL for security)
+// ═══════════════════════════════════════════════════════════════
+
+model AuditLog {
+  id String @id @default(cuid())
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  action   String // "user.login", "order.create", "withdrawal.process"
+  entity   String // "User", "Order", "Withdrawal"
+  entityId String?
+
+  changes  Json? // What changed (old vs new)
+  metadata Json? // Additional context
+
+  ipAddress String?
+  userAgent String?
+  sessionId String?
+
+  source String? // "web", "api", "admin", "system"
+
+  severity AuditSeverity @default(INFO)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@index([action])
+  @@index([severity])
+}
+
+enum AuditSeverity {
+  DEBUG
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  FAVORITES (wishlist)
+// ═══════════════════════════════════════════════════════════════
+
+model Favorite {
+  id String @id @default(cuid())
+
+  userId String
+
+  // What's favorited (one of these)
+  productListingId String?
+  customRequestId  String?
+  sellerId         String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productListingId])
+  @@unique([userId, customRequestId])
+  @@unique([userId, sellerId])
+  @@index([userId])
+}
