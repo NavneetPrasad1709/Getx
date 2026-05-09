@@ -132,6 +132,9 @@ model User {
   messages      Message[]
   notifications Notification[]
 
+  buyerConversations  Conversation[] @relation("BuyerConversations")
+  sellerConversations Conversation[] @relation("SellerConversations")
+
   walletTransactions WalletTransaction[]
   withdrawals        Withdrawal[]
 
@@ -484,6 +487,8 @@ model Offer {
 
   orderId String?
 
+  conversation Conversation?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -661,10 +666,10 @@ model Order {
   buyerCountry String?
   buyerIp      String?
 
-  messages Message[]
-  reviews  Review[]
-  payouts  Payout[]
-  disputes Dispute[]
+  conversation Conversation?
+  reviews      Review[]
+  payouts      Payout[]
+  disputes     Dispute[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -706,14 +711,55 @@ enum PaymentProvider {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  MESSAGES (order-specific chat)
+//  CONVERSATIONS + MESSAGES (per-order or per-offer chat)
 // ═══════════════════════════════════════════════════════════════
+
+model Conversation {
+  id String @id @default(cuid())
+
+  // Linked to ONE of Order or Offer (each unique on its side)
+  orderId String? @unique
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  offerId String? @unique
+  offer   Offer?  @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  // Always exactly two participants: buyer + seller
+  buyerId  String
+  buyer    User   @relation("BuyerConversations", fields: [buyerId], references: [id])
+  sellerId String
+  seller   User   @relation("SellerConversations", fields: [sellerId], references: [id])
+
+  // Last message preview (denormalized for inbox queries)
+  lastMessageAt   DateTime?
+  lastMessageText String?   @db.Text
+
+  // Per-participant unread counts (cleared on mark-as-read)
+  buyerUnread  Int @default(0)
+  sellerUnread Int @default(0)
+
+  status ConversationStatus @default(ACTIVE)
+
+  messages Message[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([buyerId, status])
+  @@index([sellerId, status])
+  @@index([lastMessageAt])
+}
+
+enum ConversationStatus {
+  ACTIVE
+  CLOSED
+  BLOCKED
+}
 
 model Message {
   id String @id @default(cuid())
 
-  orderId String
-  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   senderId String
   sender   User   @relation(fields: [senderId], references: [id])
@@ -721,33 +767,26 @@ model Message {
   type    MessageType @default(TEXT)
   content String      @db.Text
 
-  attachments String[]
+  attachments String[] @default([])
 
-  // For credentials (encrypted)
-  encryptedContent String? @db.Text
+  readAt    DateTime?
+  editedAt  DateTime?
+  deletedAt DateTime?
 
-  // System messages (status updates)
-  isSystem     Boolean @default(false)
-  systemAction String? // "order.delivered", "order.confirmed"
-
-  read   Boolean   @default(false)
-  readAt DateTime?
-
-  isHidden  Boolean @default(false)
-  flagCount Int     @default(0)
+  // System messages (auto-emitted on order events)
+  systemEvent String? // "ORDER_PAID", "ORDER_DELIVERED", "ORDER_COMPLETED", "CONVERSATION_STARTED"
+  metadata    Json?
 
   createdAt DateTime @default(now())
 
-  @@index([orderId, createdAt])
+  @@index([conversationId, createdAt])
   @@index([senderId])
 }
 
 enum MessageType {
   TEXT
   IMAGE
-  CREDENTIALS // Special: account credentials (encrypted)
   SYSTEM
-  OFFER
 }
 
 // ═══════════════════════════════════════════════════════════════

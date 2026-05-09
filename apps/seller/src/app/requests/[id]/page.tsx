@@ -19,6 +19,7 @@ import { SellerShell } from '@/components/seller-shell';
 import { useRequest } from '@/hooks/use-seller-requests';
 import { useCreateOffer } from '@/hooks/use-seller-offers';
 import { useAuth } from '@/hooks/use-auth';
+import { ChatButton } from '@/components/chat/chat-button';
 
 function humanize(key: string): string {
   return key
@@ -188,14 +189,20 @@ export default function RequestDetailPage() {
                     You can&apos;t bid on your own request.
                   </p>
                 ) : myOffer ? (
-                  <div>
-                    <p className="text-sm mb-3">You&apos;ve already submitted an offer:</p>
+                  <div className="space-y-3">
+                    <p className="text-sm">You&apos;ve already submitted an offer:</p>
                     <div className="p-3 rounded bg-muted/30">
                       <div className="font-bold">${myOffer.price.toFixed(2)}</div>
                       <div className="text-xs text-muted-foreground">
                         {myOffer.deliveryHours}h delivery · Status: {myOffer.status}
                       </div>
                     </div>
+                    <ChatButton
+                      offerId={myOffer.id}
+                      label="Message buyer"
+                      variant="outline"
+                      className="w-full"
+                    />
                   </div>
                 ) : request.status !== 'OPEN' ? (
                   <p className="text-sm text-muted-foreground">

@@ -14,6 +14,7 @@ import {
 } from '@/hooks/use-custom-requests';
 import { useCreateOrderFromOffer } from '@/hooks/use-orders';
 import { useAuth } from '@/hooks/use-auth';
+import { ChatButton } from '@/components/chat/chat-button';
 
 const TIER_COLORS: Record<string, string> = {
   BASIC: 'bg-muted/30 text-muted-foreground',
@@ -217,6 +218,7 @@ export default function RequestDetailPage() {
                         key={offer.id}
                         offer={offer}
                         canAccept={isOwner && request.status === 'OPEN'}
+                        canMessage={isOwner}
                         onAccept={() => handleAcceptOffer(offer.id)}
                       />
                     ))}
@@ -284,10 +286,12 @@ export default function RequestDetailPage() {
 function OfferRow({
   offer,
   canAccept,
+  canMessage,
   onAccept,
 }: {
   offer: RequestOffer;
   canAccept: boolean;
+  canMessage: boolean;
   onAccept: () => void;
 }) {
   const initial = (offer.seller.name ?? offer.seller.username ?? '?').charAt(0).toUpperCase();
@@ -325,14 +329,16 @@ function OfferRow({
           </div>
         </div>
         <p className="text-sm whitespace-pre-line mb-3">{offer.message}</p>
-        {canAccept && (
-          <div className="flex gap-2">
-            <Button size="sm" onClick={onAccept}>
-              Accept Offer
-            </Button>
-            <Button size="sm" variant="outline" disabled>
-              Message Seller
-            </Button>
+        {(canAccept || canMessage) && (
+          <div className="flex flex-wrap gap-2">
+            {canAccept && (
+              <Button size="sm" onClick={onAccept}>
+                Accept Offer
+              </Button>
+            )}
+            {canMessage && (
+              <ChatButton offerId={offer.id} variant="outline" label="Message Seller" />
+            )}
           </div>
         )}
       </div>

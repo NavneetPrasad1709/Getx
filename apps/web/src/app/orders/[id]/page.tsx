@@ -15,6 +15,7 @@ import {
   type OrderStatus,
 } from '@/hooks/use-orders';
 import { useAuth } from '@/hooks/use-auth';
+import { ChatButton } from '@/components/chat/chat-button';
 
 const STATUS_INFO: Record<
   OrderStatus,
@@ -294,7 +295,7 @@ export default function OrderDetailPage() {
             <Card>
               <CardContent className="p-6">
                 <h3 className="font-semibold mb-3">{isBuyer ? 'Seller' : 'Buyer'}</h3>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 mb-4">
                   <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold">
                     {(counterparty.name ?? counterparty.username ?? '?').charAt(0).toUpperCase()}
                   </div>
@@ -309,6 +310,14 @@ export default function OrderDetailPage() {
                     )}
                   </div>
                 </div>
+                {order.status !== 'CANCELLED' && order.status !== 'PENDING' && (
+                  <ChatButton
+                    orderId={order.id}
+                    label={isBuyer ? 'Message seller' : 'Message buyer'}
+                    variant="outline"
+                    className="w-full"
+                  />
+                )}
               </CardContent>
             </Card>
           </div>

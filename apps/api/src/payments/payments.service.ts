@@ -8,6 +8,8 @@ import { ConfigService } from '@nestjs/config';
 import type { Prisma } from '@getx/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { ConversationsService } from '../conversations/conversations.service';
+import { ChatGateway } from '../conversations/chat.gateway';
 import { MockPaymentProvider } from './providers/mock.provider';
 import { PaddlePaymentProvider } from './providers/paddle.provider';
 import {
@@ -28,6 +30,8 @@ export class PaymentsService {
     private config: ConfigService,
     private prisma: PrismaService,
     private audit: AuditService,
+    private conversations: ConversationsService,
+    private chat: ChatGateway,
     mock: MockPaymentProvider,
     paddle: PaddlePaymentProvider,
   ) {
@@ -226,6 +230,29 @@ export class PaymentsService {
       },
       severity: 'WARNING',
     });
+
+    // Auto-open conversation + announce. Best-effort — don't fail payment.
+    try {
+      await this.conversations.getOrCreateConversation(order.buyerId, {
+        orderId: order.id,
+      });
+      const sysMsg = await this.conversations.sendSystemMessage({
+        orderId: order.id,
+        event: 'ORDER_PAID',
+        content: `Payment received ($${order.buyerTotal.toFixed(2)}). Funds held in escrow until delivery is confirmed.`,
+      });
+      if (sysMsg) {
+        this.chat.broadcastToConversation(
+          sysMsg.conversationId,
+          'message_received',
+          sysMsg,
+        );
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Failed to emit ORDER_PAID system message for ${order.orderNumber}: ${err instanceof Error ? err.message : err}`,
+      );
+    }
 
     this.logger.log(
       `Order paid: ${order.orderNumber} ($${order.buyerTotal.toFixed(2)})`,

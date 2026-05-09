@@ -8,6 +8,8 @@ import {
 import type { Prisma } from '@getx/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { ConversationsService } from '../conversations/conversations.service';
+import { ChatGateway } from '../conversations/chat.gateway';
 import {
   CreateOrderFromListingDto,
   CreateOrderFromOfferDto,
@@ -78,7 +80,30 @@ export class OrdersService {
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
+    private conversations: ConversationsService,
+    private chat: ChatGateway,
   ) {}
+
+  private async emitSystemMessage(params: {
+    orderId: string;
+    event: string;
+    content: string;
+  }) {
+    try {
+      const msg = await this.conversations.sendSystemMessage(params);
+      if (msg) {
+        this.chat.broadcastToConversation(
+          msg.conversationId,
+          'message_received',
+          msg,
+        );
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Failed to emit ${params.event} for order ${params.orderId}: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
 
   async createFromListing(
     buyerId: string,
@@ -254,6 +279,12 @@ export class OrdersService {
       metadata: { orderNumber: order.orderNumber },
     });
 
+    await this.emitSystemMessage({
+      orderId,
+      event: 'ORDER_DELIVERED',
+      content: `Seller marked order ${order.orderNumber} as delivered. Confirm receipt to release escrow.`,
+    });
+
     return updated;
   }
 
@@ -276,6 +307,12 @@ export class OrdersService {
       entityId: orderId,
       metadata: { orderNumber: order.orderNumber, manualRelease: true },
       severity: 'WARNING',
+    });
+
+    await this.emitSystemMessage({
+      orderId,
+      event: 'ORDER_COMPLETED',
+      content: `Buyer confirmed receipt. Order ${order.orderNumber} completed and funds released.`,
     });
 
     return {

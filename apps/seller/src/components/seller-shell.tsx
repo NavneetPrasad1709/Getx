@@ -3,15 +3,17 @@
 import { useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Button, ThemeToggle } from '@getx/ui';
+import { Badge, Button, ThemeToggle } from '@getx/ui';
 import { useAuth } from '@/hooks/use-auth';
+import { useMyConversations } from '@/hooks/use-chat';
 
-const NAV: Array<{ href: string; label: string; exact?: boolean }> = [
+const NAV: Array<{ href: string; label: string; exact?: boolean; key?: 'messages' }> = [
   { href: '/', label: 'Dashboard', exact: true },
   { href: '/listings', label: 'My Listings' },
   { href: '/requests', label: 'Open Requests' },
   { href: '/offers', label: 'My Offers' },
   { href: '/orders', label: 'Orders' },
+  { href: '/messages', label: 'Messages', key: 'messages' },
   { href: '/wallet', label: 'Wallet' },
   { href: '/profile', label: 'Profile' },
 ];
@@ -20,6 +22,10 @@ export function SellerShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { user, logout, loading } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { data: convs } = useMyConversations(!!user);
+  const unreadCount =
+    convs?.reduce((sum, c) => sum + (user?.id === c.buyerId ? c.buyerUnread : c.sellerUnread), 0) ??
+    0;
 
   const isActive = (href: string, exact = false) =>
     exact ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
@@ -56,13 +62,18 @@ export function SellerShell({ children }: { children: ReactNode }) {
               key={item.href}
               href={item.href}
               onClick={() => setSidebarOpen(false)}
-              className={`block px-3 py-2 rounded-md text-sm transition-colors ${
+              className={`flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors ${
                 isActive(item.href, item.exact)
                   ? 'bg-primary/10 text-primary font-medium'
                   : 'hover:bg-muted/50 text-foreground'
               }`}
             >
-              {item.label}
+              <span>{item.label}</span>
+              {item.key === 'messages' && unreadCount > 0 && (
+                <Badge variant="default" className="text-[10px]">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </Badge>
+              )}
             </Link>
           ))}
         </nav>

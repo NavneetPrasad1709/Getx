@@ -21,6 +21,7 @@ import {
   useSellerOrder,
   type SellerOrderDetail,
 } from '@/hooks/use-seller-orders';
+import { ChatButton } from '@/components/chat/chat-button';
 
 function snapshotTitle(order: SellerOrderDetail): string {
   return (
@@ -263,6 +264,19 @@ export default function SellerOrderDetailPage() {
           </div>
 
           <div className="space-y-4">
+            {order.status !== 'CANCELLED' && order.status !== 'PENDING' && (
+              <Card>
+                <CardContent className="p-4">
+                  <ChatButton
+                    orderId={order.id}
+                    label="Message buyer"
+                    variant="outline"
+                    className="w-full"
+                  />
+                </CardContent>
+              </Card>
+            )}
+
             <Card>
               <CardContent className="p-6">
                 <h3 className="font-semibold mb-3">Earnings</h3>
