@@ -7,6 +7,7 @@ import { AuditModule } from './audit/audit.module';
 import { MailModule } from './mail/mail.module';
 import { AuthModule } from './auth/auth.module';
 import { GamesModule } from './games/games.module';
+import { ListingsModule } from './listings/listings.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { GamesModule } from './games/games.module';
     MailModule,
     AuthModule,
     GamesModule,
+    ListingsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
