@@ -13,6 +13,29 @@ interface RawBodyRequest extends Request {
 }
 
 async function bootstrap() {
+  // Fail fast in production if a critical env var is missing — prevents the
+  // localhost:3000 fallback from leaking into prod redirects, and surfaces
+  // missing JWT secrets at boot instead of at first auth attempt.
+  if (process.env.NODE_ENV === 'production') {
+    const required = [
+      'DATABASE_URL',
+      'JWT_ACCESS_SECRET',
+      'JWT_REFRESH_SECRET',
+      'WEB_URL',
+      'SELLER_URL',
+      'ADMIN_URL',
+    ];
+    const missing = required.filter((key) => !process.env[key]);
+    if (missing.length > 0) {
+      // Plain console.error — Logger isn't initialized yet at this point.
+
+      console.error(
+        `❌ Missing required env vars in production: ${missing.join(', ')}`,
+      );
+      process.exit(1);
+    }
+  }
+
   const app = await NestFactory.create(AppModule, { cors: false });
   const config = app.get(ConfigService);
 

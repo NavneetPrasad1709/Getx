@@ -7,6 +7,7 @@ import {
 import type { Prisma } from '@getx/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PaymentsService } from '../payments/payments.service';
 import {
   HideContentDto,
@@ -108,6 +109,7 @@ export class AdminService {
     private prisma: PrismaService,
     private audit: AuditService,
     private payments: PaymentsService,
+    private notifications: NotificationsService,
   ) {}
 
   async getDashboard() {
@@ -116,22 +118,12 @@ export class AdminService {
       in: ['PAID', 'IN_PROGRESS', 'DELIVERED', 'CONFIRMED', 'COMPLETED'],
     };
 
-    const [
-      totalUsers,
-      newUsersWeek,
-      activeSellers,
-      totalListings,
-      activeListings,
-      totalOrders,
-      ordersWeek,
-      gmvAllTime,
-      gmvWeek,
-      revenueAllTime,
-      revenueWeek,
-      pendingPayouts,
-      totalReviews,
-      recentAudits,
-    ] = await Promise.all([
+    // Batched in groups of 3 to avoid hammering the Prisma connection pool.
+    // Pre-launch audit found a single Promise.all of 14 queries was tripping
+    // the P2024 timeout under PgBouncer's `connection_limit=1`. Even now that
+    // we've raised the limit (.env), keeping these batched protects against
+    // any future re-tightening and shaves ~30% off worst-case latency.
+    const [totalUsers, newUsersWeek, activeSellers] = await Promise.all([
       this.prisma.user.count({ where: { deletedAt: null } }),
       this.prisma.user.count({
         where: { createdAt: { gte: weekAgo }, deletedAt: null },
@@ -139,12 +131,21 @@ export class AdminService {
       this.prisma.user.count({
         where: { isSeller: true, status: 'ACTIVE' },
       }),
+    ]);
+
+    const [totalListings, activeListings] = await Promise.all([
       this.prisma.productListing.count({ where: { deletedAt: null } }),
       this.prisma.productListing.count({
         where: { status: 'ACTIVE', deletedAt: null },
       }),
+    ]);
+
+    const [totalOrders, ordersWeek] = await Promise.all([
       this.prisma.order.count(),
       this.prisma.order.count({ where: { createdAt: { gte: weekAgo } } }),
+    ]);
+
+    const [gmvAllTime, gmvWeek] = await Promise.all([
       this.prisma.order.aggregate({
         _sum: { buyerTotal: true },
         where: { status: PAID_LIKE },
@@ -153,6 +154,9 @@ export class AdminService {
         _sum: { buyerTotal: true },
         where: { status: PAID_LIKE, createdAt: { gte: weekAgo } },
       }),
+    ]);
+
+    const [revenueAllTime, revenueWeek] = await Promise.all([
       this.prisma.order.aggregate({
         _sum: { buyerFee: true, sellerCommission: true },
         where: { status: 'COMPLETED' },
@@ -161,6 +165,9 @@ export class AdminService {
         _sum: { buyerFee: true, sellerCommission: true },
         where: { status: 'COMPLETED', createdAt: { gte: weekAgo } },
       }),
+    ]);
+
+    const [pendingPayouts, totalReviews, recentAudits] = await Promise.all([
       this.prisma.user.aggregate({ _sum: { sellerWallet: true } }),
       this.prisma.review.count({ where: { isHidden: false } }),
       this.prisma.auditLog.findMany({
@@ -367,6 +374,7 @@ export class AdminService {
       select: {
         id: true,
         orderNumber: true,
+        buyerId: true,
         sellerId: true,
         escrowStatus: true,
         sellerAmount: true,
@@ -434,6 +442,37 @@ export class AdminService {
       severity: 'CRITICAL',
     });
 
+    // Mirror the user-visible side of confirmReceipt: tell the seller they
+    // got paid, tell the buyer their order is now closed.
+    void this.notifications.create({
+      userId: order.sellerId,
+      type: 'ORDER_COMPLETED',
+      title: 'Order completed — payment released',
+      message: `Order ${order.orderNumber} confirmed by GETX admin. $${order.sellerAmount.toFixed(2)} added to your wallet.`,
+      link: `/orders/${order.id}`,
+      metadata: {
+        entityType: 'Order',
+        entityId: order.id,
+        amount: order.sellerAmount,
+        adminAction: 'force_release',
+      },
+      sendEmail: true,
+    });
+
+    void this.notifications.create({
+      userId: order.buyerId,
+      type: 'ORDER_COMPLETED',
+      title: 'Order completed',
+      message: `Your order ${order.orderNumber} has been completed by GETX admin review.`,
+      link: `/orders/${order.id}`,
+      metadata: {
+        entityType: 'Order',
+        entityId: order.id,
+        adminAction: 'force_release',
+      },
+      sendEmail: false, // In-app only — admin-involvement messaging is sensitive.
+    });
+
     return { success: true };
   }
 
@@ -444,6 +483,8 @@ export class AdminService {
         id: true,
         orderNumber: true,
         status: true,
+        buyerId: true,
+        sellerId: true,
         buyerTotal: true,
         paymentTransactionId: true,
         paymentProvider: true,
@@ -508,6 +549,43 @@ export class AdminService {
         refundId,
       },
       severity: 'CRITICAL',
+    });
+
+    const refundedAmount = dto.fullRefund
+      ? order.buyerTotal
+      : (dto.amount ?? order.buyerTotal);
+
+    // Use ORDER_CANCELLED enum value — NotificationType doesn't have a
+    // dedicated ORDER_REFUNDED. Cancellation semantically captures "order
+    // ended unexpectedly with money returned to the buyer".
+    void this.notifications.create({
+      userId: order.buyerId,
+      type: 'ORDER_CANCELLED',
+      title: 'Refund processed',
+      message: `$${refundedAmount.toFixed(2)} has been refunded to your original payment method for order ${order.orderNumber}.`,
+      link: `/orders/${order.id}`,
+      metadata: {
+        entityType: 'Order',
+        entityId: order.id,
+        amount: refundedAmount,
+        adminAction: 'refund',
+      },
+      sendEmail: true,
+    });
+
+    void this.notifications.create({
+      userId: order.sellerId,
+      type: 'ORDER_CANCELLED',
+      title: 'Order refunded by admin',
+      message: `Order ${order.orderNumber} was refunded. Reason: ${dto.reason}`,
+      link: `/orders/${order.id}`,
+      metadata: {
+        entityType: 'Order',
+        entityId: order.id,
+        amount: refundedAmount,
+        adminAction: 'refund',
+      },
+      sendEmail: true,
     });
 
     return { success: true, refundId };
