@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { ChatGateway } from './chat.gateway';
 import { ConversationsController } from './conversations.controller';
 import { ConversationsService } from './conversations.service';
@@ -21,6 +22,7 @@ const BUCKET_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
       }),
       inject: [ConfigService],
     }),
+    NotificationsModule,
   ],
   controllers: [ConversationsController],
   providers: [ConversationsService, ChatGateway, SocketRateLimiter],

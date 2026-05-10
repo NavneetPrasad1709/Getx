@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ConversationsService } from '../conversations/conversations.service';
 import { ChatGateway } from '../conversations/chat.gateway';
+import { NotificationsService } from '../notifications/notifications.service';
 import { MockPaymentProvider } from './providers/mock.provider';
 import { PaddlePaymentProvider } from './providers/paddle.provider';
 import {
@@ -32,6 +33,7 @@ export class PaymentsService {
     private audit: AuditService,
     private conversations: ConversationsService,
     private chat: ChatGateway,
+    private notifications: NotificationsService,
     mock: MockPaymentProvider,
     paddle: PaddlePaymentProvider,
   ) {
@@ -253,6 +255,20 @@ export class PaymentsService {
         `Failed to emit ORDER_PAID system message for ${order.orderNumber}: ${err instanceof Error ? err.message : err}`,
       );
     }
+
+    void this.notifications.create({
+      userId: order.sellerId,
+      type: 'ORDER_PAID',
+      title: 'New paid order',
+      message: `Order ${order.orderNumber} - $${order.buyerTotal.toFixed(2)}. Buyer paid; please prepare delivery.`,
+      link: `/orders/${order.id}`,
+      metadata: {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        amount: order.buyerTotal,
+      },
+      sendEmail: true,
+    });
 
     this.logger.log(
       `Order paid: ${order.orderNumber} ($${order.buyerTotal.toFixed(2)})`,

@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { Badge, Button, ThemeToggle } from '@getx/ui';
 import { useAuth } from '@/hooks/use-auth';
 import { useMyConversations } from '@/hooks/use-chat';
+import { NotificationBell } from '@/components/notifications/notification-bell';
 
 const NAV: Array<{ href: string; label: string; exact?: boolean; key?: 'messages' }> = [
   { href: '/', label: 'Dashboard', exact: true },
@@ -111,13 +112,19 @@ export function SellerShell({ children }: { children: ReactNode }) {
               ☰
             </button>
             <span className="font-display font-bold">GETX Seller</span>
-            <ThemeToggle />
+            <div className="flex items-center gap-2">
+              <NotificationBell />
+              <ThemeToggle />
+            </div>
           </div>
         </header>
 
         <header className="hidden md:flex border-b bg-card items-center justify-between p-4">
           <h2 className="text-sm text-muted-foreground">sell.getx.gg</h2>
-          <ThemeToggle />
+          <div className="flex items-center gap-2">
+            <NotificationBell />
+            <ThemeToggle />
+          </div>
         </header>
 
         <main className="flex-1">{children}</main>

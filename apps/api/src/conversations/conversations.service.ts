@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import type { Prisma } from '@getx/database';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   ListMessagesDto,
   SendMessageDto,
@@ -57,7 +58,10 @@ export type MessageRow = Prisma.MessageGetPayload<{
 export class ConversationsService {
   private readonly logger = new Logger(ConversationsService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notifications: NotificationsService,
+  ) {}
 
   async getOrCreateConversation(
     userId: string,
@@ -179,6 +183,7 @@ export class ConversationsService {
 
     const isBuyer = conv.buyerId === userId;
     const otherUnreadField = isBuyer ? 'sellerUnread' : 'buyerUnread';
+    const recipientId = isBuyer ? conv.sellerId : conv.buyerId;
 
     const [message] = await this.prisma.$transaction([
       this.prisma.message.create({
@@ -200,6 +205,17 @@ export class ConversationsService {
         },
       }),
     ]);
+
+    // In-app notification only (no email — would spam on every chat).
+    void this.notifications.create({
+      userId: recipientId,
+      type: 'NEW_MESSAGE',
+      title: 'New message',
+      message: dto.content.slice(0, 120),
+      link: `/messages?id=${conv.id}`,
+      metadata: { conversationId: conv.id, messageId: message.id },
+      sendEmail: false,
+    });
 
     return message;
   }

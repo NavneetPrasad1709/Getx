@@ -117,6 +117,52 @@ export class MailService {
     );
   }
 
+  /**
+   * Generic notification email. Wraps the caller's HTML in the standard
+   * GETX shell so the look stays consistent across order/offer/review
+   * notifications.
+   */
+  async sendNotification(params: {
+    to: string;
+    subject: string;
+    title: string;
+    body?: string;
+    actionUrl?: string;
+    actionLabel?: string;
+  }): Promise<void> {
+    const safeTitle = this.escapeHtml(params.title);
+    const safeBody = params.body ? this.escapeHtml(params.body) : '';
+    const safeUrl = params.actionUrl ? this.escapeHtml(params.actionUrl) : '';
+    const safeLabel = this.escapeHtml(params.actionLabel ?? 'View on GETX');
+
+    const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#fafbfc;font-family:Arial,sans-serif;">
+  <div style="max-width:600px;margin:40px auto;background:white;border-radius:12px;padding:40px;">
+    <h1 style="color:#2563eb;margin:0 0 16px;font-size:24px;">${safeTitle}</h1>
+    ${safeBody ? `<p style="color:#475569;font-size:15px;line-height:1.6;margin:0 0 24px;">${safeBody}</p>` : ''}
+    ${
+      safeUrl
+        ? `<div style="text-align:center;margin:32px 0;">
+             <a href="${safeUrl}" style="display:inline-block;background:#2563eb;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:600;">${safeLabel}</a>
+           </div>`
+        : ''
+    }
+    <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb;">
+    <p style="color:#94a3b8;font-size:12px;margin:0;text-align:center;">GETX — Get X. Get gaming.</p>
+  </div>
+</body>
+</html>`;
+    await this.send(
+      params.to,
+      params.subject,
+      html,
+      `${params.title}\n${params.body ?? ''}`,
+    );
+  }
+
   private async send(
     to: string,
     subject: string,

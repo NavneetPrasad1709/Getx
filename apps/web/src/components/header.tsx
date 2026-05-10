@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Button, ThemeToggle } from '@getx/ui';
 import { useAuth } from '@/hooks/use-auth';
 import { useMyConversations } from '@/hooks/use-chat';
+import { NotificationBell } from '@/components/notifications/notification-bell';
 
 export function Header() {
   const { user, isAuthenticated, loading, logout } = useAuth();
@@ -42,6 +43,7 @@ export function Header() {
             <div className="h-9 w-20 bg-muted/30 animate-pulse rounded-md" />
           ) : isAuthenticated ? (
             <div className="flex items-center gap-3">
+              <NotificationBell />
               <Link
                 href="/messages"
                 className="relative hidden sm:inline text-sm hover:text-primary transition-colors"

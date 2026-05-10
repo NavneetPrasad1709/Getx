@@ -16,6 +16,8 @@ import {
 } from '@/hooks/use-orders';
 import { useAuth } from '@/hooks/use-auth';
 import { ChatButton } from '@/components/chat/chat-button';
+import { ReviewForm } from '@/components/reviews/review-form';
+import { useReviewEligibility } from '@/hooks/use-reviews';
 
 const STATUS_INFO: Record<
   OrderStatus,
@@ -92,6 +94,10 @@ export default function OrderDetailPage() {
   const { data: order, isLoading, refetch } = useOrder(id);
   const createCheckout = useCreateCheckout();
   const confirmReceipt = useConfirmReceipt();
+  const { data: eligibility, refetch: refetchEligibility } = useReviewEligibility(
+    id,
+    order?.status === 'COMPLETED',
+  );
 
   useEffect(() => {
     const status = searchParams.get('payment');
@@ -186,6 +192,16 @@ export default function OrderDetailPage() {
                 <Timeline order={order} />
               </CardContent>
             </Card>
+
+            {order.status === 'COMPLETED' && eligibility?.canReview && (
+              <ReviewForm
+                orderId={order.id}
+                onSuccess={() => {
+                  void refetchEligibility();
+                  void refetch();
+                }}
+              />
+            )}
 
             {(order.status === 'DELIVERED' || order.status === 'COMPLETED') &&
               order.deliveryProof && (

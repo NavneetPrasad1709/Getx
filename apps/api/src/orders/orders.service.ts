@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ConversationsService } from '../conversations/conversations.service';
 import { ChatGateway } from '../conversations/chat.gateway';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   CreateOrderFromListingDto,
   CreateOrderFromOfferDto,
@@ -82,6 +83,7 @@ export class OrdersService {
     private audit: AuditService,
     private conversations: ConversationsService,
     private chat: ChatGateway,
+    private notifications: NotificationsService,
   ) {}
 
   private async emitSystemMessage(params: {
@@ -285,6 +287,16 @@ export class OrdersService {
       content: `Seller marked order ${order.orderNumber} as delivered. Confirm receipt to release escrow.`,
     });
 
+    void this.notifications.create({
+      userId: order.buyerId,
+      type: 'ORDER_DELIVERED',
+      title: 'Your order was delivered',
+      message: `Order ${order.orderNumber} delivered. Please confirm receipt to release the seller's payment.`,
+      link: `/orders/${order.id}`,
+      metadata: { orderId: order.id, orderNumber: order.orderNumber },
+      sendEmail: true,
+    });
+
     return updated;
   }
 
@@ -313,6 +325,20 @@ export class OrdersService {
       orderId,
       event: 'ORDER_COMPLETED',
       content: `Buyer confirmed receipt. Order ${order.orderNumber} completed and funds released.`,
+    });
+
+    void this.notifications.create({
+      userId: order.sellerId,
+      type: 'ORDER_COMPLETED',
+      title: 'Order completed — payment released',
+      message: `Order ${order.orderNumber} confirmed by buyer. $${order.sellerAmount.toFixed(2)} added to your wallet.`,
+      link: `/orders/${order.id}`,
+      metadata: {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        amount: order.sellerAmount,
+      },
+      sendEmail: true,
     });
 
     return {

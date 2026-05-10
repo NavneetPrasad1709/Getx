@@ -8,6 +8,7 @@ import {
 import type { Prisma } from '@getx/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateOfferDto } from './dto/create-offer.dto';
 
 const MY_OFFERS_INCLUDE = {
@@ -34,6 +35,7 @@ export class OffersService {
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
+    private notifications: NotificationsService,
   ) {}
 
   async createOffer(sellerId: string, dto: CreateOfferDto): Promise<OfferRow> {
@@ -98,6 +100,20 @@ export class OffersService {
           requestId: dto.requestId,
           price: dto.price,
         },
+      });
+
+      void this.notifications.create({
+        userId: request.buyerId,
+        type: 'OFFER_RECEIVED',
+        title: 'New offer on your request',
+        message: `Seller bid $${dto.price.toFixed(2)} on "${request.title}". Delivery in ${dto.deliveryHours}h.`,
+        link: `/requests/${request.id}`,
+        metadata: {
+          offerId: offer.id,
+          requestId: request.id,
+          price: dto.price,
+        },
+        sendEmail: true,
       });
 
       return offer;
