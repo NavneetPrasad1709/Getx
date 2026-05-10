@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { safeImageUrl } from '../../common/validators/safe-url';
 
 export const CreateRequestSchema = z
   .object({
@@ -12,7 +13,7 @@ export const CreateRequestSchema = z
       .min(20, 'Description must be at least 20 characters')
       .max(2000),
 
-    images: z.array(z.string().url()).max(5).default([]),
+    images: z.array(safeImageUrl()).max(5).default([]),
 
     budgetMin: z.number().min(1, 'Minimum budget required'),
     budgetMax: z.number().min(1, 'Maximum budget required'),

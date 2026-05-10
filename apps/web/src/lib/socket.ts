@@ -7,6 +7,11 @@ function getSocketUrl(): string {
   return apiUrl.replace(/\/api\/v1\/?$/, '');
 }
 
+interface RateLimitPayload {
+  event: string;
+  retryAfterMs: number;
+}
+
 export function getSocket(): Socket {
   if (socket && socket.connected) return socket;
   if (socket) return socket;
@@ -18,6 +23,15 @@ export function getSocket(): Socket {
     reconnection: true,
     reconnectionAttempts: 5,
     reconnectionDelay: 1000,
+  });
+
+  // Server emits this when WS rate limit is hit (per user/event). Surfaced
+  // here so any feature can react. UI toast is intentionally not dispatched
+  // — components decide what to do with the warning.
+  socket.on('rate_limit_exceeded', (data: RateLimitPayload) => {
+    console.warn(
+      `[chat] rate limit hit on "${data.event}", retry in ${Math.ceil(data.retryAfterMs / 1000)}s`,
+    );
   });
 
   return socket;

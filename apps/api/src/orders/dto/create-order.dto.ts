@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { safeImageUrl } from '../../common/validators/safe-url';
 
 export const CreateOrderFromListingSchema = z.object({
   listingId: z.string().min(1),
@@ -10,7 +11,7 @@ export const CreateOrderFromOfferSchema = z.object({
 });
 
 export const MarkDeliveredSchema = z.object({
-  proofImages: z.array(z.string().url()).max(5).default([]),
+  proofImages: z.array(safeImageUrl()).max(5).default([]),
   notes: z.string().max(2000).optional(),
   credentials: z
     .object({

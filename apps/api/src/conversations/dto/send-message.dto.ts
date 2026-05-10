@@ -1,9 +1,10 @@
 import { z } from 'zod';
+import { safeImageUrl } from '../../common/validators/safe-url';
 
 export const SendMessageSchema = z.object({
   conversationId: z.string().min(1),
   content: z.string().min(1, 'Message cannot be empty').max(2000),
-  attachments: z.array(z.string().url()).max(5).default([]),
+  attachments: z.array(safeImageUrl()).max(5).default([]),
   type: z.enum(['TEXT', 'IMAGE']).default('TEXT'),
 });
 

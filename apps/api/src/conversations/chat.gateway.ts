@@ -13,6 +13,11 @@ import {
 import { parse as parseCookie } from 'cookie';
 import { Server, Socket } from 'socket.io';
 import { ConversationsService, type MessageRow } from './conversations.service';
+import { SendMessageSchema } from './dto/send-message.dto';
+import {
+  SocketRateLimiter,
+  type SocketRateLimitEvent,
+} from './socket-rate-limiter';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -22,24 +27,33 @@ interface JoinPayload {
   conversationId: string;
 }
 
-interface SendPayload {
-  conversationId: string;
-  content: string;
-  attachments?: string[];
-}
-
 interface TypingPayload {
   conversationId: string;
   isTyping: boolean;
 }
+
+// Decorator config is read at class-definition time, before DI runs, so the
+// allowlist must be sourced from process.env (not ConfigService). The HTTP
+// CORS in main.ts uses the same env vars, so the gateway stays aligned.
+const WS_ALLOWED_ORIGINS = [
+  process.env.WEB_URL ?? 'http://localhost:3000',
+  process.env.SELLER_URL ?? 'http://localhost:3001',
+  process.env.ADMIN_URL ?? 'http://localhost:3002',
+];
 
 @Injectable()
 @WebSocketGateway({
   cors: {
     origin: (
       origin: string | undefined,
-      cb: (err: Error | null, allow: boolean) => void,
-    ) => cb(null, true),
+      cb: (err: Error | null, allowed?: boolean) => void,
+    ) => {
+      // No-origin requests (curl, server-to-server, mobile webviews) bypass
+      // the CORS check — browser clients always send Origin.
+      if (!origin) return cb(null, true);
+      if (WS_ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+      return cb(new Error(`Origin not allowed: ${origin}`));
+    },
     credentials: true,
   },
   namespace: '/chat',
@@ -55,6 +69,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private jwt: JwtService,
     private config: ConfigService,
     private convs: ConversationsService,
+    private rateLimiter: SocketRateLimiter,
   ) {}
 
   async handleConnection(client: AuthenticatedSocket) {
@@ -97,12 +112,37 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.log(`Socket disconnected: user=${client.userId}`);
   }
 
+  /**
+   * Centralised rate-limit gate. Emits a `rate_limit_exceeded` event back to
+   * the client (so the UI can debounce or warn) and returns false if blocked.
+   */
+  private rateLimitOk(
+    client: AuthenticatedSocket,
+    event: SocketRateLimitEvent,
+  ): boolean {
+    if (!client.userId) return false;
+    const result = this.rateLimiter.consume(client.userId, event);
+    if (!result.allowed) {
+      client.emit('rate_limit_exceeded', {
+        event,
+        retryAfterMs: result.retryAfterMs,
+      });
+      return false;
+    }
+    return true;
+  }
+
   @SubscribeMessage('join_conversation')
   async handleJoin(
     @MessageBody() data: JoinPayload,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     if (!client.userId) return { error: 'Not authenticated' };
+    if (!data?.conversationId) return { error: 'conversationId required' };
+    if (!this.rateLimitOk(client, 'join_conversation')) {
+      return { error: 'Rate limit exceeded' };
+    }
+
     const allowed = await this.convs.isParticipant(
       client.userId,
       data.conversationId,
@@ -118,29 +158,58 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() data: JoinPayload,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
+    if (!client.userId) return { error: 'Not authenticated' };
+    if (!data?.conversationId) return { error: 'conversationId required' };
+    if (!this.rateLimitOk(client, 'leave_conversation')) {
+      return { error: 'Rate limit exceeded' };
+    }
     await client.leave(`conv:${data.conversationId}`);
     return { success: true };
   }
 
   @SubscribeMessage('send_message')
   async handleSendMessage(
-    @MessageBody() data: SendPayload,
+    @MessageBody() data: unknown,
     @ConnectedSocket() client: AuthenticatedSocket,
-  ): Promise<{ success: true; message: MessageRow } | { error: string }> {
+  ): Promise<
+    | { success: true; message: MessageRow }
+    | {
+        error: string;
+        issues?: Array<{ path: PropertyKey[]; message: string }>;
+      }
+  > {
     if (!client.userId) return { error: 'Not authenticated' };
+    if (!this.rateLimitOk(client, 'send_message')) {
+      return { error: 'Rate limit exceeded. Slow down.' };
+    }
+
+    const raw =
+      typeof data === 'object' && data !== null
+        ? (data as Record<string, unknown>)
+        : {};
+    // Force type to TEXT — SYSTEM messages come from the server only.
+    const parsed = SendMessageSchema.safeParse({
+      conversationId: raw.conversationId,
+      content: raw.content,
+      attachments: raw.attachments ?? [],
+      type: 'TEXT',
+    });
+
+    if (!parsed.success) {
+      return {
+        error: 'Invalid message',
+        issues: parsed.error.issues.map((i) => ({
+          path: i.path,
+          message: i.message,
+        })),
+      };
+    }
 
     try {
-      const message = await this.convs.sendMessage(client.userId, {
-        conversationId: data.conversationId,
-        content: data.content,
-        attachments: data.attachments ?? [],
-        type: 'TEXT',
-      });
-
+      const message = await this.convs.sendMessage(client.userId, parsed.data);
       this.server
-        .to(`conv:${data.conversationId}`)
+        .to(`conv:${parsed.data.conversationId}`)
         .emit('message_received', message);
-
       return { success: true, message };
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Send failed';
@@ -150,11 +219,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('typing')
-  handleTyping(
+  async handleTyping(
     @MessageBody() data: TypingPayload,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     if (!client.userId) return;
+    if (!data?.conversationId || typeof data.isTyping !== 'boolean') return;
+    if (!this.rateLimitOk(client, 'typing')) return;
+
+    // Participant gate prevents typing-event spoofing into others' rooms.
+    const allowed = await this.convs.isParticipant(
+      client.userId,
+      data.conversationId,
+    );
+    if (!allowed) return;
+
     client.to(`conv:${data.conversationId}`).emit('user_typing', {
       userId: client.userId,
       isTyping: data.isTyping,
@@ -167,7 +246,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     if (!client.userId) return;
+    if (!data?.conversationId) return;
+    if (!this.rateLimitOk(client, 'mark_read')) return;
+
     try {
+      // markAsRead runs its own participant check; if it throws we never
+      // reach the broadcast, so 3rd-party callers can't fake read receipts.
       await this.convs.markAsRead(client.userId, data.conversationId);
       this.server.to(`conv:${data.conversationId}`).emit('messages_read', {
         userId: client.userId,
@@ -179,7 +263,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   /**
-   * Broadcast a server-emitted event (e.g. system message from OrdersService).
+   * Server-side broadcast helper. Used by OrdersService / PaymentsService to
+   * push ORDER_PAID / DELIVERED / COMPLETED system messages.
    */
   broadcastToConversation(
     conversationId: string,
