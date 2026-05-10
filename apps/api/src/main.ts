@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { json } from 'express';
@@ -36,8 +37,17 @@ async function bootstrap() {
     }
   }
 
-  const app = await NestFactory.create(AppModule, { cors: false });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    cors: false,
+  });
   const config = app.get(ConfigService);
+
+  // SIGTERM/SIGINT clean-shutdown for Railway/Render rollouts.
+  app.enableShutdownHooks();
+
+  // Trust the platform reverse proxy so req.ip + secure cookies work.
+  // Railway/Render/Vercel front the app with their own load balancer.
+  app.set('trust proxy', 1);
 
   app.use(helmet());
   app.use(cookieParser());

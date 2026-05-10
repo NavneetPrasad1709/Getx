@@ -23,7 +23,9 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:sync-games": "tsx prisma/sync-games.ts",
     "db:seed-listings": "tsx prisma/seed-listings.ts",
-    "db:reset": "prisma migrate reset --force"
+    "db:reset": "prisma migrate reset --force",
+    "seed:prod": "tsx scripts/seed-production.ts",
+    "deploy:prod": "bash scripts/deploy-prod.sh"
   },
   "dependencies": {
     "@getx/games": "workspace:*",

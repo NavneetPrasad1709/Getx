@@ -67,6 +67,21 @@ pnpm test         # Test all
 pnpm format       # Format codebase
 ```
 
+## Deployment
+
+See [LAUNCH.md](./LAUNCH.md) for the complete first-time deploy guide
+and [RUNBOOK.md](./RUNBOOK.md) for daily operations.
+
+Quick start:
+
+1. Set up Vercel (×3) + Railway/Render (×1) accounts
+2. Configure env vars (templates in `apps/*/.env.production.example`)
+3. Connect git → auto-deploy
+4. Run the prod seed once:
+   `pnpm --filter @getx/database deploy:prod && pnpm --filter @getx/database seed:prod`
+5. Verify with `curl https://api.getx.gg/api/v1/health`
+6. Activate real payments by setting `PADDLE_API_KEY` when ready
+
 ## Status
 
-Bootstrapping in progress — Prompt 1 of 16 (initial monorepo scaffold).
+All 16 prompts shipped. 3 audits passed. Production-ready.

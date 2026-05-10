@@ -1,0 +1,21 @@
+# Render deploy config (alternative to Railway). Same shape:
+# install → generate Prisma client → build → start.
+# Run `pnpm --filter @getx/database deploy:prod` from Render shell after
+# promoting a new schema.
+services:
+  - type: web
+    name: getx-api
+    runtime: node
+    region: singapore
+    plan: starter
+    buildCommand: |
+      pnpm install --frozen-lockfile
+      pnpm --filter @getx/database db:generate
+      pnpm --filter @getx/api build
+    startCommand: node apps/api/dist/main.js
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # All other env vars (DATABASE_URL, JWT_*, etc.) set via Render dashboard.

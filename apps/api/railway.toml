@@ -1,0 +1,15 @@
+# Railway deploy config for the GETX API.
+# Builds the database package + generates the Prisma client + builds the API.
+# Migrations are NOT run automatically — run `pnpm --filter @getx/database deploy:prod`
+# from the Railway shell (or a CI step) before promoting a release.
+
+[build]
+builder = "NIXPACKS"
+buildCommand = "pnpm install --frozen-lockfile && pnpm --filter @getx/database db:generate && pnpm --filter @getx/api build"
+
+[deploy]
+startCommand = "node apps/api/dist/main.js"
+healthcheckPath = "/api/v1/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
