@@ -123,12 +123,14 @@ export class ReviewsService {
       });
 
       // Best-effort notification — never fail the review on notif errors.
+      // Link points at the order detail page (which renders the review),
+      // since /users/me/reviews doesn't exist.
       void this.notifications.create({
         userId: targetId,
         type: 'NEW_REVIEW',
         title: 'New review received',
         message: `You received a ${dto.rating}-star review on order ${order.orderNumber}.`,
-        link: `/users/me/reviews`,
+        link: `/orders/${dto.orderId}`,
         metadata: { reviewId: review.id, rating: dto.rating, direction },
         sendEmail: true,
       });

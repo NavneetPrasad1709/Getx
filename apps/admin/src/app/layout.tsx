@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { ThemeProvider, Toaster, PageTransition } from '@getx/ui';
 import { AuthProvider } from '@/hooks/use-auth';
 import { QueryProvider } from '@/components/query-provider';
+import { AdminGuard } from '@/components/admin-guard';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -17,7 +18,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
           <QueryProvider>
             <AuthProvider>
-              <PageTransition>{children}</PageTransition>
+              <AdminGuard>
+                <PageTransition>{children}</PageTransition>
+              </AdminGuard>
             </AuthProvider>
           </QueryProvider>
           <Toaster />

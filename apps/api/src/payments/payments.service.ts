@@ -317,6 +317,20 @@ export class PaymentsService {
   }
 
   /**
+   * Public refund hook for the admin module. Delegates to the active
+   * provider (Paddle in prod, Mock in dev). Caller is responsible for
+   * updating Order/escrow state — this method only triggers the provider
+   * call and returns the refundId.
+   */
+  async processRefund(opts: {
+    transactionId: string;
+    amount?: number;
+    reason: string;
+  }): Promise<{ success: boolean; refundId: string }> {
+    return this.provider.refund(opts);
+  }
+
+  /**
    * Mock-only: simulate a successful checkout webhook locally.
    */
   async simulateMockPayment(sessionId: string, orderId: string) {
