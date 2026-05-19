@@ -4,5 +4,11 @@
   "installCommand": "corepack enable && corepack prepare pnpm@11.0.8 --activate && cd ../.. && pnpm install --frozen-lockfile",
   "buildCommand": "cd ../.. && pnpm --filter @getx/database db:generate && pnpm --filter @getx/web build",
   "outputDirectory": ".next",
-  "regions": ["bom1"]
+  "regions": ["bom1"],
+  "crons": [
+    {
+      "path": "/api/health/db",
+      "schedule": "*/5 * * * *"
+    }
+  ]
 }
