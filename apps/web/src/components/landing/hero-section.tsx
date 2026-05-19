@@ -114,7 +114,7 @@ export function HeroSection() {
           ════════════════════════════════════════════════════════════════ */}
       <section
         aria-label="GETX marketplace"
-        className="relative overflow-hidden min-h-[100svh] lg:min-h-screen flex flex-col"
+        className="relative overflow-hidden min-h-[88svh] lg:min-h-[79vh] flex flex-col"
       >
         {/* MOBILE HERO — full-bleed, fills section */}
         <MobileHero reduce={!!reduce} />
@@ -152,7 +152,7 @@ export function HeroSection() {
 
           {/* Content layer — desktop full-bleed: grid spans the section,
               content centered with comfortable inner padding. */}
-          <div className="relative grid grid-cols-1 lg:grid-cols-[auto_1fr_auto] gap-5 lg:gap-12 items-end lg:items-center w-full max-w-[1400px] mx-auto px-8 lg:px-14 py-14 lg:py-20">
+          <div className="relative grid grid-cols-1 lg:grid-cols-[auto_1fr_auto] gap-5 lg:gap-12 items-end lg:items-center w-full max-w-[1400px] mx-auto px-8 lg:px-14 py-12 lg:py-16">
             {/* LEFT — game cover (DESKTOP ONLY; mobile uses bg image itself) */}
             <motion.div
               initial={reduce ? false : { opacity: 0, scale: 0.95 }}
@@ -459,17 +459,21 @@ function MobileHero({ reduce }: { reduce: boolean }) {
           fill
           priority
           sizes="100vw"
-          className="object-cover object-[60%_25%] opacity-55 mix-blend-luminosity"
+          className="object-cover object-[50%_30%] opacity-90"
         />
-        {/* Navy wash so the image picks up the brand hue */}
-        <div className="absolute inset-0 bg-[linear-gradient(165deg,hsl(220_65%_18%/0.55)_0%,hsl(222_75%_10%/0.85)_100%)]" />
-        {/* Primary radial glow bottom-left */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_55%_at_15%_85%,hsl(var(--primary)/0.35),transparent_60%)]" />
-        {/* Cyan accent top-right */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_50%_50%_at_85%_10%,hsl(195_85%_55%/0.18),transparent_55%)]" />
-        {/* Faint dot grid texture */}
+        {/* Vertical darkening — image stays vibrant at the top where
+            there's no text, fades to deep navy at the bottom where CTAs
+            sit. Gives the hero a cinematic poster feel without washing
+            the artwork out. */}
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,hsl(222_45%_8%/0.30)_0%,hsl(222_55%_8%/0.55)_45%,hsl(222_75%_6%/0.92)_100%)]" />
+        {/* Primary radial glow bottom-left — anchors the CTA cluster */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_55%_at_15%_90%,hsl(var(--primary)/0.30),transparent_60%)]" />
+        {/* Subtle cyan kiss top-right */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_50%_50%_at_85%_10%,hsl(195_85%_55%/0.14),transparent_55%)]" />
+        {/* Faint dot grid texture — sits over everything for a hint of
+            structure without becoming noise. */}
         <div
-          className="absolute inset-0 opacity-[0.06]"
+          className="absolute inset-0 opacity-[0.05]"
           style={{
             backgroundImage:
               'radial-gradient(rgb(255 255 255) 1px, transparent 1px)',
@@ -513,20 +517,7 @@ function MobileHero({ reduce }: { reduce: boolean }) {
         {/* MIDDLE GROUP — eyebrow + massive headline + subhead.
             Pushed to vertical center of the available space via flex
             distribution. */}
-        <div className="flex-1 flex flex-col justify-center py-8">
-          {/* Eyebrow tag */}
-          <motion.div
-            initial={reduce ? false : { opacity: 0, x: -8 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5, delay: 0.22, ease: EASE }}
-            className="inline-flex items-center gap-2 mb-4"
-          >
-            <span className="h-px w-8 bg-accent" />
-            <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-accent font-bold">
-              Verified marketplace
-            </span>
-          </motion.div>
-
+        <div className="flex-1 flex flex-col justify-center py-6">
           {/* MASSIVE display headline */}
           <motion.h1
             initial={reduce ? false : { opacity: 0, y: 14 }}
@@ -664,9 +655,9 @@ function MobileHero({ reduce }: { reduce: boolean }) {
               className="
                 inline-flex items-center justify-center gap-1.5
                 h-12 px-5 rounded-full w-full
-                bg-white/[0.06] ring-1 ring-white/15
-                text-white/90 text-[13.5px] font-semibold
-                hover:bg-white/[0.10]
+                bg-white/[0.12] ring-1 ring-white/30 backdrop-blur-md
+                text-white text-[13.5px] font-semibold
+                hover:bg-white/[0.18] hover:ring-white/40
                 transition-all duration-150
               "
             >

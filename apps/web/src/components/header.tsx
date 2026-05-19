@@ -860,31 +860,26 @@ export function Header() {
                 ThemeToggle has moved to Tier 3 (CategoryStrip) — this
                 keeps Tier 2 focused on identity (logo), search, and
                 account/wallet actions only. */}
-            <div className="flex-1 hidden md:flex items-center justify-end gap-1 min-w-0">
-              {/* "Sell on GETX" — always visible so buyers know they can flip
-                  to the seller app. Outlined / accent treatment so it
-                  reads as a secondary CTA next to the primary "Get
-                  started" or avatar. Opens the seller app in a new tab
-                  since it's a different origin; the seller guard there
-                  will bounce back to /auth/login if the session isn't
-                  shared yet. */}
+            <div className="flex-1 hidden md:flex items-center justify-end gap-1.5 min-w-0 shrink-0">
+              {/* "Sell on GETX" — text-only secondary action so the
+                  cluster doesn't compete with the primary "Get started"
+                  CTA. Soft accent on hover. Hidden below xl when space
+                  is tight; mobile drawer keeps the link reachable. */}
               <a
                 href={sellerUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="Sell on GETX (opens seller dashboard)"
                 className="
-                  group inline-flex items-center gap-1.5 h-10 px-4 mr-1 rounded-full
-                  bg-[hsl(var(--accent)/0.10)] ring-1 ring-[hsl(var(--accent)/0.30)]
-                  text-[hsl(var(--accent))] text-[12.5px] font-semibold
-                  hover:bg-[hsl(var(--accent)/0.18)] hover:ring-[hsl(var(--accent)/0.50)]
-                  hover:-translate-y-px transition-all duration-150
+                  group hidden xl:inline-flex items-center gap-1 h-10 px-3 rounded-full whitespace-nowrap shrink-0
+                  text-[hsl(var(--foreground)/0.85)] text-[13px] font-semibold
+                  hover:text-[hsl(var(--accent))] hover:bg-[hsl(var(--accent)/0.08)]
+                  transition-colors duration-150
                 "
               >
-                <Sparkles className="h-3.5 w-3.5 transition-transform group-hover:rotate-12" />
-                <span className="hidden lg:inline">Sell on GETX</span>
-                <span className="lg:hidden">Sell</span>
-                <ArrowUpRight className="h-3 w-3 -mr-0.5" />
+                <Sparkles className="h-3.5 w-3.5 text-[hsl(var(--accent))] transition-transform group-hover:rotate-12" />
+                Sell on GETX
+                <ArrowUpRight className="h-3 w-3 opacity-60" />
               </a>
               {loading ? (
                 <div className="h-10 w-24 rounded-full bg-[hsl(var(--surface-elevated))] animate-pulse" />
@@ -1034,11 +1029,11 @@ export function Header() {
                   </div>
                 </div>
               ) : (
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 shrink-0">
                   <Link
                     href="/auth/login"
                     className="
-                      inline-flex h-10 px-4 items-center rounded-full
+                      inline-flex h-10 px-3.5 items-center rounded-full whitespace-nowrap shrink-0
                       text-[13px] font-medium text-[hsl(var(--foreground)/0.85)]
                       hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--surface-elevated))]
                       transition-all duration-150
@@ -1049,7 +1044,7 @@ export function Header() {
                   <Link
                     href="/auth/register"
                     className="
-                      group inline-flex items-center gap-1.5 h-10 px-5 rounded-full
+                      group inline-flex items-center gap-1.5 h-10 px-4 lg:px-5 rounded-full whitespace-nowrap shrink-0
                       bg-gradient-to-b from-[hsl(var(--primary))] to-[hsl(var(--primary-hover))]
                       text-white text-[13px] font-semibold tracking-tight
                       shadow-[0_6px_16px_-4px_hsl(var(--primary)/0.55),inset_0_1px_0_hsl(0_0%_100%/0.22),inset_0_-2px_0_hsl(0_0%_0%/0.15)]
