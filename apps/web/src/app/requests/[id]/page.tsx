@@ -15,13 +15,10 @@ import {
 import { useCreateOrderFromOffer } from '@/hooks/use-orders';
 import { useAuth } from '@/hooks/use-auth';
 import { ChatButton } from '@/components/chat/chat-button';
+import { TierAsRankBadge } from '@/components/badges/rank-badge';
+import { ShareOfferButton } from '@/components/offers/share-offer-button';
 
-const TIER_COLORS: Record<string, string> = {
-  BASIC: 'bg-muted/30 text-muted-foreground',
-  VERIFIED: 'bg-success/10 text-success',
-  PREMIUM: 'bg-primary/10 text-primary',
-  ELITE: 'bg-accent/10 text-accent-foreground',
-};
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://getx.gg';
 
 function humanizeKey(key: string): string {
   return key
@@ -219,6 +216,7 @@ export default function RequestDetailPage() {
                         offer={offer}
                         canAccept={isOwner && request.status === 'OPEN'}
                         canMessage={isOwner}
+                        canShare={!!user && user.id === offer.seller.id}
                         onAccept={() => handleAcceptOffer(offer.id)}
                       />
                     ))}
@@ -287,17 +285,16 @@ function OfferRow({
   offer,
   canAccept,
   canMessage,
+  canShare,
   onAccept,
 }: {
   offer: RequestOffer;
   canAccept: boolean;
   canMessage: boolean;
+  canShare: boolean;
   onAccept: () => void;
 }) {
   const initial = (offer.seller.name ?? offer.seller.username ?? '?').charAt(0).toUpperCase();
-  const tierClass = offer.seller.verifiedTier
-    ? (TIER_COLORS[offer.seller.verifiedTier] ?? 'bg-muted/30 text-muted-foreground')
-    : null;
 
   return (
     <div className="flex items-start gap-3 p-4 border rounded-lg">
@@ -316,16 +313,25 @@ function OfferRow({
               <span>{offer.seller.totalSales} sales</span>
               <span aria-hidden="true">·</span>
               <span>{offer.seller.country}</span>
-              {offer.seller.verifiedTier && tierClass && (
-                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${tierClass}`}>
-                  {offer.seller.verifiedTier}
-                </span>
-              )}
+              <TierAsRankBadge
+                tier={offer.seller.verifiedTier}
+                rank={offer.seller.rank ?? null}
+                size="xs"
+              />
             </div>
           </div>
-          <div className="text-right shrink-0">
-            <div className="font-display text-xl font-bold">${offer.price.toFixed(2)}</div>
-            <div className="text-xs text-muted-foreground">Delivers in {offer.deliveryHours}h</div>
+          <div className="flex items-start gap-2 shrink-0">
+            <div className="text-right">
+              <div className="font-display text-xl font-bold">${offer.price.toFixed(2)}</div>
+              <div className="text-xs text-muted-foreground">Delivers in {offer.deliveryHours}h</div>
+            </div>
+            {canShare ? (
+              <ShareOfferButton
+                offerId={offer.id}
+                shareUrl={`${SITE_URL}/o/${offer.id}`}
+                variant="icon"
+              />
+            ) : null}
           </div>
         </div>
         <p className="text-sm whitespace-pre-line mb-3">{offer.message}</p>

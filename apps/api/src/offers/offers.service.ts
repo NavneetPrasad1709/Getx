@@ -30,6 +30,55 @@ export type MyOffer = Prisma.OfferGetPayload<{
 }>;
 export type OfferRow = Prisma.OfferGetPayload<object>;
 
+/* Public-share payload — everything the /o/[offerId] page needs minus
+   buyer PII. Buyer name is truncated to first segment so a stranger
+   can't fingerprint them from the share URL. */
+const PUBLIC_OFFER_INCLUDE = {
+  request: {
+    select: {
+      id: true,
+      requestNumber: true,
+      title: true,
+      description: true,
+      tabType: true,
+      budgetMin: true,
+      budgetMax: true,
+      currency: true,
+      createdAt: true,
+      expiresAt: true,
+      game: { select: { slug: true, name: true, icon: true } },
+    },
+  },
+  seller: {
+    select: {
+      id: true,
+      username: true,
+      name: true,
+      avatar: true,
+      bio: true,
+      sellerRating: true,
+      totalReviews: true,
+      totalSales: true,
+      verifiedTier: true,
+      rank: true,
+      isVerified: true,
+      country: true,
+      createdAt: true,
+    },
+  },
+  buyer: {
+    select: { id: true, name: true, country: true },
+  },
+} satisfies Prisma.OfferInclude;
+
+type PublicOfferRow = Prisma.OfferGetPayload<{
+  include: typeof PUBLIC_OFFER_INCLUDE;
+}>;
+
+export type PublicOffer = Omit<PublicOfferRow, 'buyer'> & {
+  buyer: { firstName: string; country: string };
+};
+
 @Injectable()
 export class OffersService {
   constructor(
@@ -170,5 +219,23 @@ export class OffersService {
       orderBy: { createdAt: 'desc' },
       include: MY_OFFERS_INCLUDE,
     });
+  }
+
+  /* Public sanitised offer view — used by /o/[offerId] share pages and
+     by the OG image generator. Strips buyer PII to first name + country.
+     Throws 404 for unknown ids so we don't expose a "valid id" probe. */
+  async getPublicOffer(offerId: string): Promise<PublicOffer> {
+    const offer = await this.prisma.offer.findUnique({
+      where: { id: offerId },
+      include: PUBLIC_OFFER_INCLUDE,
+    });
+    if (!offer) throw new NotFoundException('Offer not found');
+
+    const firstName = (offer.buyer.name ?? '').trim().split(/\s+/)[0] || 'Buyer';
+    const { buyer: _b, ...rest } = offer;
+    return {
+      ...rest,
+      buyer: { firstName, country: offer.buyer.country },
+    };
   }
 }

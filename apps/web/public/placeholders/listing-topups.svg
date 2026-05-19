@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 480" role="img" aria-label="Top-up placeholder">
+  <defs>
+    <radialGradient id="lt-glow" cx="50%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#FCAF17" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#000" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="lt-coin" cx="40%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#FFE17A"/>
+      <stop offset="100%" stop-color="#A66F00"/>
+    </radialGradient>
+  </defs>
+  <rect width="800" height="480" fill="#050505"/>
+  <rect width="800" height="480" fill="url(#lt-glow)"/>
+  <g transform="translate(400 280)">
+    <ellipse cx="0" cy="0" rx="140" ry="36" fill="#6B4500"/>
+    <ellipse cx="0" cy="-12" rx="140" ry="36" fill="url(#lt-coin)"/>
+    <text x="0" y="2" text-anchor="middle" fill="#000" font-family="Poppins, system-ui, sans-serif" font-size="44" font-weight="700">₹</text>
+    <ellipse cx="0" cy="-60" rx="120" ry="30" fill="#A66F00"/>
+    <ellipse cx="0" cy="-72" rx="120" ry="30" fill="url(#lt-coin)"/>
+    <text x="0" y="-58" text-anchor="middle" fill="#000" font-family="Poppins, system-ui, sans-serif" font-size="36" font-weight="700">₹</text>
+  </g>
+  <text x="400" y="420" text-anchor="middle" fill="#FCAF17" font-family="Poppins, system-ui, sans-serif" font-size="32" font-weight="700" letter-spacing="6">POKÉCOIN TOP-UP</text>
+</svg>

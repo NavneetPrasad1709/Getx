@@ -74,6 +74,27 @@ export class GamesService {
     });
   }
 
+  /* Public game search — used by the /search federated page. Matches
+     name + shortName + slug case-insensitively. Returns 6 top hits
+     ordered by sortOrder (so Pokémon GO stays on top). */
+  searchGames(q: string, limit = 6): Promise<GameListItem[]> {
+    const trimmed = q.trim();
+    if (trimmed.length < 2) return Promise.resolve([]);
+    return this.prisma.game.findMany({
+      where: {
+        isActive: true,
+        OR: [
+          { name: { contains: trimmed, mode: 'insensitive' } },
+          { shortName: { contains: trimmed, mode: 'insensitive' } },
+          { slug: { contains: trimmed, mode: 'insensitive' } },
+        ],
+      },
+      orderBy: { sortOrder: 'asc' },
+      take: Math.min(limit, 20),
+      select: LIST_GAME_SELECT,
+    });
+  }
+
   async getGameBySlug(slug: string): Promise<GameDetail> {
     const game = await this.prisma.game.findUnique({
       where: { slug },

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 750" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <radialGradient id="ins-bg" cx="30%" cy="40%" r="80%">
+      <stop offset="0%" stop-color="#FFE25C"/>
+      <stop offset="55%" stop-color="#F0B400"/>
+      <stop offset="100%" stop-color="#2E1F00"/>
+    </radialGradient>
+    <linearGradient id="ins-glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#FFCB05" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="750" fill="url(#ins-bg)"/>
+  <rect width="1200" height="750" fill="url(#ins-glow)"/>
+  <circle cx="900" cy="180" r="220" fill="#FFFFFF" opacity="0.16"/>
+  <circle cx="240" cy="620" r="180" fill="#1A1410" opacity="0.18"/>
+  <g transform="translate(600 375)">
+    <polygon points="0,-180 156,-90 156,90 0,180 -156,90 -156,-90" fill="none" stroke="#1A1410" stroke-width="8" opacity="0.85"/>
+    <polygon points="-30,-110 30,-30 -10,-30 30,110 -50,10 -10,10" fill="#1A1410" opacity="0.7"/>
+    <text x="0" y="155" fill="#1A1410" font-family="Inter,system-ui,sans-serif" font-size="62" font-weight="900" text-anchor="middle" letter-spacing="6">INSTINCT</text>
+  </g>
+  <text x="60" y="700" fill="#1A1410" font-family="ui-monospace,monospace" font-size="22" opacity="0.6" letter-spacing="5">TEAM · YELLOW</text>
+</svg>

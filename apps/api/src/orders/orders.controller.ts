@@ -10,6 +10,8 @@ import {
   Query,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import { z } from 'zod';
+import { safeImageUrl } from '../common/validators/safe-url';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import {
   OrdersService,
@@ -22,6 +24,20 @@ import {
   CreateOrderFromOfferSchema,
   MarkDeliveredSchema,
 } from './dto/create-order.dto';
+
+const OpenDisputeSchema = z.object({
+  reason: z.enum([
+    'NOT_DELIVERED',
+    'WRONG_ITEM',
+    'ACCOUNT_RECOVERED',
+    'FRAUDULENT',
+    'POOR_QUALITY',
+    'COMMUNICATION_ISSUE',
+    'OTHER',
+  ]),
+  description: z.string().min(30, 'At least 30 characters').max(2000),
+  evidence: z.array(safeImageUrl()).max(5).default([]),
+});
 
 @Controller('orders')
 export class OrdersController {
@@ -78,5 +94,27 @@ export class OrdersController {
   ): Promise<OrderRow> {
     const dto = MarkDeliveredSchema.parse(body);
     return this.orders.markDelivered(id, userId, dto);
+  }
+
+  @Post(':id/reorder')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @HttpCode(HttpStatus.CREATED)
+  reorder(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+  ): Promise<{ orderId: string }> {
+    return this.orders.reorder(userId, id);
+  }
+
+  @Post(':id/dispute')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @HttpCode(HttpStatus.CREATED)
+  openDispute(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+    @Body() body: unknown,
+  ): Promise<{ id: string; disputeNumber: string }> {
+    const dto = OpenDisputeSchema.parse(body);
+    return this.orders.openDispute(userId, id, dto);
   }
 }

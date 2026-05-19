@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 480" role="img" aria-label="Trainer account placeholder">
+  <defs>
+    <radialGradient id="la-glow" cx="50%" cy="40%" r="70%">
+      <stop offset="0%" stop-color="#FCAF17" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#000" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="800" height="480" fill="#050505"/>
+  <rect width="800" height="480" fill="url(#la-glow)"/>
+  <g stroke="#FCAF17" stroke-width="1" opacity="0.18">
+    <line x1="0" y1="120" x2="800" y2="120"/>
+    <line x1="0" y1="240" x2="800" y2="240"/>
+    <line x1="0" y1="360" x2="800" y2="360"/>
+  </g>
+  <g transform="translate(400 240)">
+    <circle r="76" fill="#FCAF17"/>
+    <circle r="76" fill="none" stroke="#FFF" stroke-width="3"/>
+    <path d="M -76 0 a 76 76 0 0 1 152 0 Z" fill="#000"/>
+    <rect x="-76" y="-4" width="152" height="8" fill="#0A0A0A"/>
+    <circle cx="0" cy="0" r="22" fill="#000" stroke="#FFF" stroke-width="3"/>
+  </g>
+  <text x="400" y="400" text-anchor="middle" fill="#FCAF17" font-family="Poppins, system-ui, sans-serif" font-size="32" font-weight="700" letter-spacing="6">TRAINER ACCOUNT</text>
+</svg>

@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { ArrowUpRight, Bell, CheckCheck } from 'lucide-react';
 import { Card } from '@getx/ui';
 import { useAuth } from '@/hooks/use-auth';
 import {
@@ -53,17 +53,19 @@ export function NotificationBell() {
     if (n.link) router.push(n.link);
   };
 
+  const webUrl = process.env.NEXT_PUBLIC_WEB_URL ?? 'http://localhost:3000';
+
   return (
     <div className="relative">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="relative p-2 hover:bg-muted/50 rounded-md transition-colors"
+        className="relative grid place-items-center h-10 w-10 rounded-full text-foreground/75 hover:text-foreground hover:bg-muted/30 transition-colors"
         aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
       >
-        <BellIcon />
+        <Bell className="h-[18px] w-[18px]" strokeWidth={2} />
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-1 rounded-full bg-error text-white text-[10px] font-bold flex items-center justify-center">
+          <span className="absolute top-1.5 right-1.5 h-4 min-w-4 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center ring-2 ring-surface tabular-nums">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
@@ -77,16 +79,25 @@ export function NotificationBell() {
             className="fixed inset-0 z-30 cursor-default"
             onClick={() => setOpen(false)}
           />
-          <Card className="absolute right-0 top-12 w-96 max-w-[95vw] z-40 max-h-[500px] flex flex-col shadow-2xl border-border">
-            <div className="p-3 border-b flex items-center justify-between gap-2">
-              <h3 className="font-semibold text-sm">Notifications</h3>
+          <Card className="absolute right-0 top-12 w-96 max-w-[95vw] z-40 max-h-[500px] flex flex-col shadow-[0_24px_60px_-20px_hsl(0_0%_0%/0.25)] border-border rounded-2xl overflow-hidden">
+            <div className="p-3 border-b border-border flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Bell className="h-3.5 w-3.5 text-primary" strokeWidth={2.5} />
+                <h3 className="font-semibold text-[13.5px]">Notifications</h3>
+                {unreadCount > 0 && (
+                  <span className="inline-flex items-center justify-center h-4 min-w-5 px-1 rounded-full bg-primary/15 text-primary font-mono text-[10px] font-bold tabular-nums">
+                    {unreadCount}
+                  </span>
+                )}
+              </div>
               {unreadCount > 0 && (
                 <button
                   type="button"
                   onClick={() => markAll.mutate()}
                   disabled={markAll.isPending}
-                  className="text-xs text-primary hover:underline disabled:opacity-50"
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:text-primary-hover disabled:opacity-50 transition-colors"
                 >
+                  <CheckCheck className="h-3 w-3" strokeWidth={2.5} />
                   Mark all read
                 </button>
               )}
@@ -94,36 +105,42 @@ export function NotificationBell() {
 
             <div className="flex-1 overflow-y-auto">
               {!notifs ? (
-                <p className="text-center text-xs text-muted-foreground py-8">Loading…</p>
+                <p className="text-center text-xs text-muted-foreground py-10">Loading…</p>
               ) : notifs.data.length === 0 ? (
-                <p className="text-center text-sm text-muted-foreground py-8">
-                  No notifications yet.
-                </p>
+                <div className="text-center py-10 px-4">
+                  <div className="grid place-items-center h-10 w-10 rounded-full bg-muted/30 text-muted-foreground mx-auto mb-2">
+                    <Bell className="h-4 w-4" />
+                  </div>
+                  <div className="text-[13px] font-semibold mb-0.5">All caught up</div>
+                  <div className="text-[11.5px] text-muted-foreground">
+                    Order, offer, and review alerts land here.
+                  </div>
+                </div>
               ) : (
-                <div className="divide-y">
+                <div className="divide-y divide-border">
                   {notifs.data.map((n) => (
                     <button
                       key={n.id}
                       type="button"
                       onClick={() => handleClick(n)}
-                      className={`w-full text-left p-3 hover:bg-muted/40 transition-colors ${
+                      className={`w-full text-left p-3 hover:bg-muted/25 transition-colors ${
                         !n.read ? 'bg-primary/5' : ''
                       }`}
                     >
                       <div className="flex items-start gap-3">
                         {!n.read ? (
-                          <span className="h-2 w-2 rounded-full bg-primary mt-1.5 flex-shrink-0" />
+                          <span className="h-2 w-2 rounded-full bg-primary mt-1.5 flex-shrink-0 shadow-[0_0_8px_hsl(var(--primary))]" />
                         ) : (
                           <span className="h-2 w-2 flex-shrink-0" />
                         )}
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium text-sm">{n.title}</div>
+                          <div className="font-semibold text-[13px] leading-snug">{n.title}</div>
                           {n.message && (
-                            <div className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
+                            <div className="text-[11.5px] text-muted-foreground line-clamp-2 mt-0.5 leading-snug">
                               {n.message}
                             </div>
                           )}
-                          <div className="text-xs text-muted-foreground mt-1">
+                          <div className="text-[10.5px] text-muted-foreground/80 mt-1 font-mono">
                             {timeAgo(n.createdAt)}
                           </div>
                         </div>
@@ -135,39 +152,22 @@ export function NotificationBell() {
             </div>
 
             {notifs && notifs.data.length > 0 && (
-              <div className="p-2 border-t text-center">
-                <Link
-                  href="/profile/notifications"
-                  className="text-xs text-primary hover:underline"
+              <div className="border-t border-border">
+                <a
+                  href={`${webUrl}/profile/notifications`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-1 p-2.5 text-[11.5px] font-semibold text-primary hover:bg-muted/20 transition-colors"
                   onClick={() => setOpen(false)}
                 >
-                  View all notifications
-                </Link>
+                  View all on getx.gg
+                  <ArrowUpRight className="h-3 w-3" />
+                </a>
               </div>
             )}
           </Card>
         </>
       )}
     </div>
-  );
-}
-
-function BellIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-      <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-    </svg>
   );
 }

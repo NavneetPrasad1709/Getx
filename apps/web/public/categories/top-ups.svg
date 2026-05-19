@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" role="img" aria-label="GetX PokéCoin top-ups key art">
+  <defs>
+    <radialGradient id="tu-glow" cx="50%" cy="55%" r="60%">
+      <stop offset="0%" stop-color="#FCAF17" stop-opacity="0.5"/>
+      <stop offset="50%" stop-color="#FCAF17" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#000" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="tu-floor" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#000" stop-opacity="0.95"/>
+    </linearGradient>
+    <radialGradient id="coin-face" cx="40%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#FFE17A"/>
+      <stop offset="50%" stop-color="#FCAF17"/>
+      <stop offset="100%" stop-color="#8A5D00"/>
+    </radialGradient>
+    <linearGradient id="coin-side" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#C68B0F"/>
+      <stop offset="100%" stop-color="#6B4500"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="1000" fill="#000"/>
+  <rect width="1600" height="1000" fill="url(#tu-glow)"/>
+  <!-- Light burst rays -->
+  <g stroke="#FCAF17" opacity="0.15">
+    <line x1="800" y1="600" x2="100" y2="100" stroke-width="2"/>
+    <line x1="800" y1="600" x2="1500" y2="100" stroke-width="2"/>
+    <line x1="800" y1="600" x2="200" y2="0" stroke-width="1"/>
+    <line x1="800" y1="600" x2="1400" y2="0" stroke-width="1"/>
+    <line x1="800" y1="600" x2="0" y2="400" stroke-width="1"/>
+    <line x1="800" y1="600" x2="1600" y2="400" stroke-width="1"/>
+  </g>
+  <!-- Coin stack (centered) -->
+  <g transform="translate(800 700)">
+    <!-- Stack: 7 coins, each offset 64px up -->
+    <g>
+      <!-- Coin 1 (bottom) -->
+      <ellipse cx="0" cy="40" rx="320" ry="60" fill="url(#coin-side)"/>
+      <ellipse cx="0" cy="0" rx="320" ry="60" fill="url(#coin-face)"/>
+      <ellipse cx="0" cy="-2" rx="290" ry="54" fill="none" stroke="#FFF" stroke-width="3" opacity="0.4"/>
+      <text x="0" y="14" text-anchor="middle" fill="#000" font-family="Poppins, system-ui, sans-serif" font-size="68" font-weight="700">₹</text>
+    </g>
+    <g transform="translate(0 -76)">
+      <ellipse cx="0" cy="40" rx="290" ry="54" fill="url(#coin-side)"/>
+      <ellipse cx="0" cy="0" rx="290" ry="54" fill="url(#coin-face)"/>
+      <ellipse cx="0" cy="-2" rx="262" ry="48" fill="none" stroke="#FFF" stroke-width="3" opacity="0.4"/>
+      <text x="0" y="14" text-anchor="middle" fill="#000" font-family="Poppins, system-ui, sans-serif" font-size="60" font-weight="700">₹</text>
+    </g>
+    <g transform="translate(0 -150)">
+      <ellipse cx="0" cy="40" rx="260" ry="48" fill="url(#coin-side)"/>
+      <ellipse cx="0" cy="0" rx="260" ry="48" fill="url(#coin-face)"/>
+      <ellipse cx="0" cy="-2" rx="232" ry="42" fill="none" stroke="#FFF" stroke-width="2" opacity="0.4"/>
+      <text x="0" y="12" text-anchor="middle" fill="#000" font-family="Poppins, system-ui, sans-serif" font-size="54" font-weight="700">₹</text>
+    </g>
+    <g transform="translate(0 -220)">
+      <ellipse cx="0" cy="40" rx="230" ry="42" fill="url(#coin-side)"/>
+      <ellipse cx="0" cy="0" rx="230" ry="42" fill="url(#coin-face)"/>
+      <text x="0" y="12" text-anchor="middle" fill="#000" font-family="Poppins, system-ui, sans-serif" font-size="48" font-weight="700">₹</text>
+    </g>
+    <g transform="translate(0 -288)">
+      <ellipse cx="0" cy="40" rx="200" ry="38" fill="url(#coin-side)"/>
+      <ellipse cx="0" cy="0" rx="200" ry="38" fill="url(#coin-face)"/>
+      <text x="0" y="10" text-anchor="middle" fill="#000" font-family="Poppins, system-ui, sans-serif" font-size="40" font-weight="700">₹</text>
+    </g>
+    <g transform="translate(0 -350)">
+      <ellipse cx="0" cy="40" rx="170" ry="32" fill="url(#coin-side)"/>
+      <ellipse cx="0" cy="0" rx="170" ry="32" fill="url(#coin-face)"/>
+    </g>
+  </g>
+  <!-- Floating sparkles -->
+  <g fill="#FFE17A">
+    <path d="M 240 220 l 6 -16 l 6 16 l 16 6 l -16 6 l -6 16 l -6 -16 l -16 -6 z" opacity="0.85"/>
+    <path d="M 1360 180 l 5 -12 l 5 12 l 12 5 l -12 5 l -5 12 l -5 -12 l -12 -5 z" opacity="0.85"/>
+    <path d="M 200 460 l 4 -10 l 4 10 l 10 4 l -10 4 l -4 10 l -4 -10 l -10 -4 z" opacity="0.7"/>
+    <path d="M 1400 480 l 5 -12 l 5 12 l 12 5 l -12 5 l -5 12 l -5 -12 l -12 -5 z" opacity="0.7"/>
+  </g>
+  <rect y="640" width="1600" height="360" fill="url(#tu-floor)"/>
+</svg>

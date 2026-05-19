@@ -94,9 +94,55 @@ export default function PrivacyPage() {
 
             <Section title="What we don't store as plain text">
               <p>
-                Passwords are stored as bcrypt hashes (never plain text). Bank account details and
-                2FA secrets are encrypted at rest. Aadhaar and PAN numbers are stored only as
-                one-way hashes.
+                Passwords are stored as bcrypt hashes (never plain text). Bank
+                account details and 2FA secrets are encrypted at rest. Identity
+                documents collected during KYC (passport, driver&apos;s licence,
+                Aadhaar, PAN, national ID) are handled by our verification
+                partner Sumsub and stored only as one-way hashes on our side.
+              </p>
+            </Section>
+
+            <Section title="International transfers">
+              <p>
+                GETX is operated globally. Your data may be processed in the
+                United States (Stripe, Vercel, Cloudflare R2), Singapore
+                (database replicas), and the United Kingdom (support tooling).
+                We rely on Standard Contractual Clauses for EU/UK transfers
+                and Sumsub&apos;s adequacy framework for verification data.
+              </p>
+            </Section>
+
+            <Section title="Your rights (GDPR / UK GDPR / CCPA)">
+              <ul className="list-disc pl-6 space-y-1 mt-2">
+                <li>
+                  Access — request a copy of everything we hold via
+                  Settings → Privacy.
+                </li>
+                <li>
+                  Erasure — close your account and request deletion. We
+                  retain audit + transaction records for legal reasons.
+                </li>
+                <li>
+                  Portability — your wallet ledger and order history export
+                  as JSON.
+                </li>
+                <li>
+                  Object / restrict — opt out of marketing in
+                  Settings → Notifications. We never sell personal data to
+                  third parties.
+                </li>
+              </ul>
+              <p className="mt-3 text-sm text-muted-foreground">
+                California residents: under the CCPA we do not sell or share
+                your personal information. Submit verifiable consumer
+                requests to{' '}
+                <a
+                  href="mailto:support@getx.live?subject=Privacy%20request"
+                  className="text-primary underline"
+                >
+                  support@getx.live
+                </a>
+                .
               </p>
             </Section>
 

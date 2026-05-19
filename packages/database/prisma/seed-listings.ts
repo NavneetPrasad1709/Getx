@@ -41,9 +41,14 @@ async function seedListings() {
   console.log(`  Found ${sellers.length} sellers, game: ${pokemonGo.name}`);
 
   // ─── ACCOUNTS (5) ──────────────────────────────────────
+  /* Each listing has a sharp scannable title (level + team + headline
+     achievement), a buyer-focused description (what's in the account +
+     transfer method + ban-risk note), and verified attribute counts. */
   const accountsData = [
     {
-      title: 'Lvl 40 Mystic - 142 Shinies, All Legendaries',
+      title: 'Lv 40 Mystic · 142 shinies · All legendaries',
+      description:
+        "OG 2018 Mystic trainer with a full Kanto-to-Galar legendary pile, 142 verified shinies, and 8 hundo-IV mons including Mewtwo and Rayquaza. PTC + Google linked; recovery email & 2FA reset bundled at transfer. Zero recovery flags, no prior trades. Ships in under 10 minutes after escrow lock.",
       price: 299,
       level: 40,
       team: 'Mystic',
@@ -52,7 +57,9 @@ async function seedListings() {
       hundoCount: 8,
     },
     {
-      title: 'Lvl 50 Valor - Master Trainer x12',
+      title: 'Lv 50 Valor · Master Trainer ×12',
+      description:
+        "Endgame Valor with 12 Master Trainer titles and a full GBL Master League roster (Giratina-O, Dialga, Mewtwo all level 50). 89 shinies, 28 legendaries. Clean account, OG 2017. Comes with full transfer pack: PTC creds, Google delink, recovery email reset.",
       price: 449,
       level: 50,
       team: 'Valor',
@@ -61,7 +68,9 @@ async function seedListings() {
       masterTrainerCount: 12,
     },
     {
-      title: 'Lvl 35 Instinct - Fresh Mythicals',
+      title: 'Lv 35 Instinct · 5 mythicals + fresh start',
+      description:
+        "Sub-level account perfect for adding to an existing Instinct setup or starting fresh. 45 shinies, 5 mythicals (Mew, Celebi, Jirachi, Darkrai, Genesect). Account is clean, never traded. Ideal for boosters or alt-account buyers.",
       price: 189,
       level: 35,
       team: 'Instinct',
@@ -69,16 +78,20 @@ async function seedListings() {
       mythicalCount: 5,
     },
     {
-      title: 'Lvl 60 Mystic - PvP Ready',
+      title: 'Lv 50 Mystic · PvP & raid endgame',
+      description:
+        "Top-tier Mystic optimised for PvP and Master League. 230 shinies, 50 legendaries, 18 hundos. All three battle leagues stocked with level 50 attackers. OG 2018, clean history, full transfer pack with email + 2FA reset. Premium tier — top 1% of GetX accounts.",
       price: 599,
-      level: 60,
+      level: 50,
       team: 'Mystic',
       shinyCount: 230,
       legendaryCount: 50,
       hundoCount: 18,
     },
     {
-      title: 'Lvl 45 Valor - Shiny Hunter Special',
+      title: 'Lv 45 Valor · Shiny hunter special (312)',
+      description:
+        "Shiny-focused Valor with 312 verified shinies including community-day exclusives and regionals (Tropius, Heatmor, Pachirisu). 22 legendaries. Perfect for collectors. Transfer includes account swap to a clean recovery email and Google unlink.",
       price: 349,
       level: 45,
       team: 'Valor',
@@ -98,14 +111,13 @@ async function seedListings() {
         tabType: 'ACCOUNTS',
         productType: 'account',
         title: data.title,
-        description:
-          'Premium Pokemon GO account. Verified, no recoveries. Account credentials provided after payment.',
+        description: data.description,
         attributes: {
           ...data,
           region: 'Global',
           platform: 'iOS',
         } as Prisma.InputJsonValue,
-        images: [`https://cdn.getx.gg/demo/account-${i + 1}.jpg`],
+        images: [],
         price: data.price,
         currency: 'USD',
         stock: 1,
@@ -143,7 +155,7 @@ async function seedListings() {
           coinAmount: data.amount,
           deliveryMethod: 'Account login',
         } as Prisma.InputJsonValue,
-        images: [`https://cdn.getx.gg/demo/coins-${data.amount}.jpg`],
+        images: [],
         price: data.price,
         currency: 'USD',
         stock: -1,
@@ -212,7 +224,7 @@ async function seedListings() {
           totalQuantity: data.qty,
           breakdown: data.breakdown,
         } as Prisma.InputJsonValue,
-        images: [`https://cdn.getx.gg/demo/items-${i + 1}.jpg`],
+        images: [],
         price: data.price,
         currency: 'USD',
         stock: -1,

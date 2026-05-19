@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" role="img" aria-label="GetX items and bundles key art">
+  <defs>
+    <radialGradient id="it-glow" cx="50%" cy="50%" r="65%">
+      <stop offset="0%" stop-color="#FCAF17" stop-opacity="0.4"/>
+      <stop offset="60%" stop-color="#FCAF17" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#000" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="it-floor" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#000" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="crate-top" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFE17A"/>
+      <stop offset="100%" stop-color="#FCAF17"/>
+    </linearGradient>
+    <linearGradient id="crate-left" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#FCAF17"/>
+      <stop offset="100%" stop-color="#A66F00"/>
+    </linearGradient>
+    <linearGradient id="crate-right" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#8A5800"/>
+      <stop offset="100%" stop-color="#553700"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="1000" fill="#000"/>
+  <rect width="1600" height="1000" fill="url(#it-glow)"/>
+  <!-- Iso grid -->
+  <g stroke="#FCAF17" stroke-width="1" opacity="0.12">
+    <line x1="0" y1="780" x2="1600" y2="780"/>
+    <line x1="0" y1="830" x2="1600" y2="830"/>
+    <line x1="0" y1="880" x2="1600" y2="880"/>
+    <line x1="0" y1="930" x2="1600" y2="930"/>
+  </g>
+  <!-- Crate (isometric) -->
+  <g transform="translate(800 540)">
+    <!-- Drop shadow -->
+    <ellipse cx="0" cy="280" rx="320" ry="44" fill="#000" opacity="0.6"/>
+    <!-- Top -->
+    <polygon points="0,-280 320,-160 0,-40 -320,-160" fill="url(#crate-top)"/>
+    <!-- Left -->
+    <polygon points="-320,-160 -320,140 0,260 0,-40" fill="url(#crate-left)"/>
+    <!-- Right -->
+    <polygon points="320,-160 320,140 0,260 0,-40" fill="url(#crate-right)"/>
+    <!-- Cross bands -->
+    <g stroke="#000" stroke-width="6" opacity="0.45" fill="none">
+      <line x1="-320" y1="-10" x2="0" y2="110"/>
+      <line x1="320" y1="-10" x2="0" y2="110"/>
+      <line x1="0" y1="-40" x2="0" y2="260"/>
+    </g>
+    <!-- Lock plate -->
+    <g transform="translate(0 0)">
+      <rect x="-36" y="-20" width="72" height="60" rx="4" fill="#000"/>
+      <path d="M -22 -20 v -26 a 22 22 0 0 1 44 0 v 26" fill="none" stroke="#000" stroke-width="6"/>
+      <circle cx="0" cy="10" r="6" fill="#FCAF17"/>
+    </g>
+    <!-- Lid highlight -->
+    <polygon points="0,-280 320,-160 0,-100" fill="#FFF" opacity="0.18"/>
+  </g>
+  <!-- Floating loot tokens -->
+  <g>
+    <g transform="translate(220 240)">
+      <polygon points="0,-22 22,0 0,22 -22,0" fill="#FCAF17" stroke="#000" stroke-width="3"/>
+      <circle cx="0" cy="0" r="6" fill="#000"/>
+    </g>
+    <g transform="translate(1340 200)">
+      <polygon points="0,-26 26,0 0,26 -26,0" fill="#E10600" stroke="#000" stroke-width="3"/>
+      <circle cx="0" cy="0" r="8" fill="#FFF"/>
+    </g>
+    <g transform="translate(180 520)">
+      <polygon points="0,-18 18,0 0,18 -18,0" fill="#FFF" stroke="#000" stroke-width="2"/>
+    </g>
+    <g transform="translate(1400 480)">
+      <polygon points="0,-22 22,0 0,22 -22,0" fill="#FCAF17" stroke="#000" stroke-width="3"/>
+    </g>
+    <g transform="translate(1260 760)" opacity="0.8">
+      <polygon points="0,-16 16,0 0,16 -16,0" fill="#FCAF17"/>
+    </g>
+  </g>
+  <rect y="640" width="1600" height="360" fill="url(#it-floor)"/>
+</svg>

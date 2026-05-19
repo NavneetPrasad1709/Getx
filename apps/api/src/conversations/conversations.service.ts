@@ -26,6 +26,9 @@ const DETAIL_INCLUDE = {
       request: { select: { id: true, requestNumber: true, title: true } },
     },
   },
+  listing: {
+    select: { id: true, title: true, slug: true, tabType: true },
+  },
 } satisfies Prisma.ConversationInclude;
 
 const LIST_INCLUDE = {
@@ -37,6 +40,9 @@ const LIST_INCLUDE = {
       id: true,
       request: { select: { id: true, requestNumber: true, title: true } },
     },
+  },
+  listing: {
+    select: { id: true, title: true, slug: true, tabType: true },
   },
 } satisfies Prisma.ConversationInclude;
 
@@ -368,5 +374,147 @@ export class ConversationsService {
     });
     if (!conv) return false;
     return conv.buyerId === userId || conv.sellerId === userId;
+  }
+
+  /* Pre-purchase chat — buyer messages a seller about a listing before
+     creating an order. Returns the existing conversation if one already
+     exists for this buyer+listing pair (so refreshing the page doesn't
+     spawn dupes). Rate-limits enforced server-side:
+       · Buyers with 0 completed orders: 1 new PRE_PURCHASE chat per 24h
+         across the whole site (anti-spam for fresh accounts).
+       · Everyone: 3 new PRE_PURCHASE chats per buyer-seller pair per 24h
+         (limit pestering one seller).
+     Self-chat is blocked. SPAM-flagged conversations don't return — buyer
+     gets a fresh ForbiddenException so the seller's block is durable. */
+  async openPrePurchaseChat(
+    buyerId: string,
+    listingId: string,
+  ): Promise<ConversationDetail> {
+    const listing = await this.prisma.productListing.findUnique({
+      where: { id: listingId },
+      select: { id: true, sellerId: true, title: true, status: true },
+    });
+    if (!listing) throw new NotFoundException('Listing not found');
+    if (listing.status !== 'ACTIVE') {
+      throw new BadRequestException('Listing not available for chat');
+    }
+    if (listing.sellerId === buyerId) {
+      throw new BadRequestException("Can't message yourself");
+    }
+
+    /* Reuse existing pre-purchase conversation between this buyer and
+       seller for this listing. */
+    const existing = await this.prisma.conversation.findFirst({
+      where: {
+        type: 'PRE_PURCHASE',
+        buyerId,
+        sellerId: listing.sellerId,
+        listingId,
+      },
+      include: DETAIL_INCLUDE,
+    });
+    if (existing) {
+      if (existing.status === 'SPAM' || existing.status === 'BLOCKED') {
+        throw new ForbiddenException(
+          'Seller has blocked further pre-purchase messages',
+        );
+      }
+      return existing;
+    }
+
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    /* Buyer-seller pair cap: 3 fresh pre-purchase chats per 24h. */
+    const recentForSeller = await this.prisma.conversation.count({
+      where: {
+        type: 'PRE_PURCHASE',
+        buyerId,
+        sellerId: listing.sellerId,
+        createdAt: { gte: dayAgo },
+      },
+    });
+    if (recentForSeller >= 3) {
+      throw new ForbiddenException(
+        'Daily pre-purchase chat limit reached for this seller',
+      );
+    }
+
+    /* Fresh-account cap: 1 pre-purchase chat per 24h sitewide if buyer
+       has never completed an order. */
+    const completedOrders = await this.prisma.order.count({
+      where: { buyerId, status: 'COMPLETED' },
+    });
+    if (completedOrders === 0) {
+      const recentSitewide = await this.prisma.conversation.count({
+        where: {
+          type: 'PRE_PURCHASE',
+          buyerId,
+          createdAt: { gte: dayAgo },
+        },
+      });
+      if (recentSitewide >= 1) {
+        throw new ForbiddenException(
+          'Complete an order before opening more pre-purchase chats',
+        );
+      }
+    }
+
+    const conversation = await this.prisma.conversation.create({
+      data: {
+        type: 'PRE_PURCHASE',
+        buyerId,
+        sellerId: listing.sellerId,
+        listingId,
+      },
+      include: DETAIL_INCLUDE,
+    });
+
+    await this.prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        senderId: buyerId,
+        type: 'SYSTEM',
+        content: `Pre-purchase inquiry started about "${listing.title}". No order created yet.`,
+        systemEvent: 'PRE_PURCHASE_OPENED',
+        metadata: { listingId },
+      },
+    });
+
+    /* In-app notification to seller — drives response time. */
+    void this.notifications.create({
+      userId: listing.sellerId,
+      type: 'NEW_MESSAGE',
+      title: 'Pre-purchase inquiry',
+      message: `A buyer wants to chat about "${listing.title}"`,
+      link: `/messages?id=${conversation.id}`,
+      metadata: { conversationId: conversation.id, listingId },
+      sendEmail: false,
+    });
+
+    return conversation;
+  }
+
+  /* Seller-only — mark a pre-purchase conversation as SPAM. Buyer is
+     prevented from re-opening for the same listing. */
+  async markConversationSpam(
+    userId: string,
+    conversationId: string,
+  ): Promise<{ success: true }> {
+    const conv = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { sellerId: true, type: true },
+    });
+    if (!conv) throw new NotFoundException();
+    if (conv.sellerId !== userId) {
+      throw new ForbiddenException('Only the seller can flag spam');
+    }
+    if (conv.type !== 'PRE_PURCHASE') {
+      throw new BadRequestException('Only pre-purchase chats can be flagged');
+    }
+    await this.prisma.conversation.update({
+      where: { id: conversationId },
+      data: { status: 'SPAM' },
+    });
+    return { success: true };
   }
 }

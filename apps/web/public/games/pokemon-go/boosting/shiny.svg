@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 750" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <radialGradient id="shiny-bg" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#FFE25C"/>
+      <stop offset="40%" stop-color="#FFB300"/>
+      <stop offset="100%" stop-color="#2A1A00"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="750" fill="url(#shiny-bg)"/>
+  <g fill="#FFFFFF" opacity="0.9">
+    <polygon points="600,260 615,355 710,370 615,385 600,480 585,385 490,370 585,355" />
+    <polygon points="300,150 310,210 370,220 310,230 300,290 290,230 230,220 290,210" opacity="0.85"/>
+    <polygon points="900,540 910,600 970,610 910,620 900,680 890,620 830,610 890,600" opacity="0.85"/>
+    <polygon points="850,180 858,225 905,232 858,239 850,285 842,239 795,232 842,225" opacity="0.75"/>
+    <polygon points="240,560 247,600 285,606 247,612 240,652 233,612 195,606 233,600" opacity="0.7"/>
+  </g>
+  <text x="600" y="690" fill="#FFFFFF" font-family="Inter,system-ui,sans-serif" font-size="64" font-weight="900" text-anchor="middle" letter-spacing="10">★ SHINY ★</text>
+</svg>

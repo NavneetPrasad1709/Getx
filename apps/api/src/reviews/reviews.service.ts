@@ -10,6 +10,8 @@ import type { Prisma, ReviewDirection } from '@getx/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { LoyaltyService } from '../loyalty/loyalty.service';
+import { RankService } from '../rank/rank.service';
 import { CreateReviewDto, RespondToReviewDto } from './dto/create-review.dto';
 
 const PUBLIC_REVIEW_INCLUDE = {
@@ -41,6 +43,8 @@ export class ReviewsService {
     private prisma: PrismaService,
     private audit: AuditService,
     private notifications: NotificationsService,
+    private loyalty: LoyaltyService,
+    private rank: RankService,
   ) {}
 
   async createReview(userId: string, dto: CreateReviewDto) {
@@ -105,6 +109,25 @@ export class ReviewsService {
             where: { id: targetId },
             data: { buyerRating: avg },
           });
+        }
+
+        /* Loyalty earn — 50 pts per review (one-shot, capped by the
+           unique (orderId, authorId) constraint above so it cannot be
+           gamed by repeat submissions on the same order). */
+        await this.loyalty.earn(tx, {
+          userId,
+          type: 'EARNED_REVIEW',
+          points: 50,
+          orderId: order.id,
+          description: `Reviewed order ${order.orderNumber}`,
+        });
+
+        /* XP — author earns 100 XP for submitting; target earns 50 XP
+           when the review is a 5-star. Both gates feed the rank
+           ladder; demotion is never triggered. */
+        await this.rank.earnXp(tx, userId, 100);
+        if (dto.rating === 5) {
+          await this.rank.earnXp(tx, targetId, 50);
         }
 
         return created;

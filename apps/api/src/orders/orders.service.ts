@@ -11,6 +11,9 @@ import { AuditService } from '../audit/audit.service';
 import { ConversationsService } from '../conversations/conversations.service';
 import { ChatGateway } from '../conversations/chat.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
+import { WalletService } from '../wallet/wallet.service';
+import { LoyaltyService } from '../loyalty/loyalty.service';
+import { RankService } from '../rank/rank.service';
 import {
   CreateOrderFromListingDto,
   CreateOrderFromOfferDto,
@@ -18,6 +21,9 @@ import {
 } from './dto/create-order.dto';
 
 const BUYER_FEE_PCT = 0.08;
+/* Default seller commission. Per-rank tiers (TRUSTED 9%, PRO 8%,
+   ELITE 7%, LEGEND 6%) come from RankService.sellerCommissionRateFor
+   and are resolved per order at creation. */
 const SELLER_COMMISSION_PCT = 0.1;
 
 const DETAIL_INCLUDE = {
@@ -32,13 +38,31 @@ const DETAIL_INCLUDE = {
       avatar: true,
       sellerRating: true,
       verifiedTier: true,
+      rank: true,
     },
   },
   productListing: {
-    select: { id: true, slug: true, sku: true, title: true, images: true },
+    select: { id: true, slug: true, sku: true, title: true, images: true, status: true, deletedAt: true },
   },
   customRequest: {
     select: { id: true, requestNumber: true, title: true, tabType: true },
+  },
+  /* Latest dispute (highest-priority open one first, then most recent
+     resolved). Used by the order page to flip the "Open dispute" button
+     to "View dispute" when one is already active. */
+  disputes: {
+    select: {
+      id: true,
+      disputeNumber: true,
+      reason: true,
+      status: true,
+      priority: true,
+      resolution: true,
+      createdAt: true,
+      resolvedAt: true,
+    },
+    orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+    take: 1,
   },
 } satisfies Prisma.OrderInclude;
 
@@ -84,6 +108,9 @@ export class OrdersService {
     private conversations: ConversationsService,
     private chat: ChatGateway,
     private notifications: NotificationsService,
+    private wallet: WalletService,
+    private loyalty: LoyaltyService,
+    private rank: RankService,
   ) {}
 
   private async emitSystemMessage(params: {
@@ -194,7 +221,18 @@ export class OrdersService {
     const amount = round2(params.basePrice * params.quantity);
     const buyerFee = round2(amount * BUYER_FEE_PCT);
     const buyerTotal = round2(amount + buyerFee);
-    const sellerCommission = round2(amount * SELLER_COMMISSION_PCT);
+
+    /* Resolve the seller's commission rate from their current rank.
+       Fallback to the default 10% if the seller row is missing for some
+       reason — never zero, never throws. */
+    const sellerRankRow = await this.prisma.user.findUnique({
+      where: { id: params.sellerId },
+      select: { rank: true },
+    });
+    const commissionRate = sellerRankRow
+      ? RankService.sellerCommissionRateFor(sellerRankRow.rank)
+      : SELLER_COMMISSION_PCT;
+    const sellerCommission = round2(amount * commissionRate);
     const sellerAmount = round2(amount - sellerCommission);
 
     const year = new Date().getFullYear();
@@ -355,10 +393,10 @@ export class OrdersService {
     orderId: string,
     trigger: 'manual' | 'auto',
   ): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
+    const cashbackResult = await this.prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({ where: { id: orderId } });
       if (!order) throw new NotFoundException();
-      if (order.escrowStatus !== 'HELD') return;
+      if (order.escrowStatus !== 'HELD') return { cashback: 0, order: null };
 
       const seller = await tx.user.findUnique({
         where: { id: order.sellerId },
@@ -400,7 +438,181 @@ export class OrdersService {
           metadata: { trigger },
         },
       });
+
+      /* Buyer cashback — 1% of buyerTotal in same currency as the order.
+         Runs in the same tx as the seller release so balances stay in
+         sync even under failure. */
+      const cashback = await this.wallet.creditCashback(tx, {
+        buyerId: order.buyerId,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        buyerTotal: order.buyerTotal,
+        currency: order.currency,
+      });
+
+      /* Loyalty: 1 point per $1 of buyerTotal (capped 1000/order to
+         prevent farming via inflated test orders). XP: 10× points,
+         capped 1000 per side. Both buyer and seller earn XP. */
+      const loyaltyPoints = Math.min(1000, Math.floor(order.buyerTotal));
+      if (loyaltyPoints > 0) {
+        await this.loyalty.earn(tx, {
+          userId: order.buyerId,
+          type: 'EARNED_PURCHASE',
+          points: loyaltyPoints,
+          description: `${loyaltyPoints} pts from order ${order.orderNumber}`,
+          orderId: order.id,
+        });
+      }
+      const xpAmount = Math.min(1000, Math.floor(order.buyerTotal) * 10);
+      if (xpAmount > 0) {
+        await this.rank.earnXp(tx, order.buyerId, xpAmount);
+        await this.rank.earnXp(tx, order.sellerId, xpAmount);
+      }
+
+      return { cashback, order, loyaltyPoints };
     });
+
+    /* Cashback toast — fire-and-forget outside the tx so the txn commits
+       even when the notification queue is unavailable. */
+    if (cashbackResult.cashback > 0 && cashbackResult.order) {
+      const o = cashbackResult.order;
+      void this.notifications.create({
+        userId: o.buyerId,
+        type: 'ORDER_COMPLETED',
+        title: 'GETX Coins earned',
+        message: `You earned ₹${cashbackResult.cashback.toFixed(0)} cashback on order ${o.orderNumber}.`,
+        link: '/profile/wallet',
+        metadata: {
+          orderId: o.id,
+          cashbackAmount: cashbackResult.cashback,
+        },
+        sendEmail: false,
+      });
+    }
+  }
+
+  /* Reorder — creates a new PENDING order against the same listingId as a
+     completed (or refunded) order. Buyer gets redirected to /orders/<new>
+     where they can pay. Hits the same createFromListing pipeline so all
+     guards (stock, listing.status, self-purchase) re-apply at current
+     listing state. */
+  async reorder(
+    buyerId: string,
+    orderId: string,
+  ): Promise<{ orderId: string }> {
+    const original = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        buyerId: true,
+        productListing: { select: { id: true, status: true, deletedAt: true } },
+      },
+    });
+    if (!original) throw new NotFoundException();
+    if (original.buyerId !== buyerId) throw new ForbiddenException();
+    if (!original.productListing) {
+      throw new BadRequestException('This order has no reorderable listing');
+    }
+    if (
+      original.productListing.deletedAt ||
+      original.productListing.status !== 'ACTIVE'
+    ) {
+      throw new BadRequestException('Listing is no longer available');
+    }
+    const created = await this.createFromListing(buyerId, {
+      listingId: original.productListing.id,
+      quantity: 1,
+    });
+    return { orderId: created.id };
+  }
+
+  /* Open a dispute — buyer initiated only (sellers contact support).
+     Sets order status to DISPUTED which pauses auto-release (the cron
+     filter excludes DISPUTED). Fires WS broadcast + system message in the
+     order conversation + email notification to seller. */
+  async openDispute(
+    buyerId: string,
+    orderId: string,
+    dto: {
+      reason: 'NOT_DELIVERED' | 'WRONG_ITEM' | 'ACCOUNT_RECOVERED' | 'FRAUDULENT' | 'POOR_QUALITY' | 'COMMUNICATION_ISSUE' | 'OTHER';
+      description: string;
+      evidence: string[];
+    },
+  ): Promise<{ id: string; disputeNumber: string }> {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        orderNumber: true,
+        buyerId: true,
+        sellerId: true,
+        status: true,
+      },
+    });
+    if (!order) throw new NotFoundException();
+    if (order.buyerId !== buyerId) {
+      throw new ForbiddenException('Only the buyer can open a dispute');
+    }
+    if (!['PAID', 'IN_PROGRESS', 'DELIVERED'].includes(order.status)) {
+      throw new BadRequestException(
+        `Disputes are only allowed on paid orders. Current status: ${order.status}`,
+      );
+    }
+
+    const existing = await this.prisma.dispute.findFirst({
+      where: { orderId, status: { in: ['OPEN', 'REVIEWING', 'AWAITING_RESPONSE'] } },
+    });
+    if (existing) {
+      throw new BadRequestException('A dispute is already open on this order');
+    }
+
+    /* Sequential dispute number — coarse but unique per process. */
+    const seq = await this.prisma.dispute.count();
+    const disputeNumber = `DSP-${new Date().getFullYear()}-${String(seq + 1).padStart(5, '0')}`;
+
+    const dispute = await this.prisma.$transaction(async (tx) => {
+      const d = await tx.dispute.create({
+        data: {
+          disputeNumber,
+          orderId,
+          creatorId: buyerId,
+          reason: dto.reason,
+          description: dto.description,
+          evidence: dto.evidence,
+          status: 'OPEN',
+          priority: 'NORMAL',
+          /* First-response SLA target — internal team responds within 6 hrs
+             per the buyer-facing copy in the modal. */
+          responseDeadline: new Date(Date.now() + 6 * 60 * 60 * 1000),
+        },
+      });
+      await tx.order.update({
+        where: { id: orderId },
+        data: { status: 'DISPUTED' },
+      });
+      return d;
+    });
+
+    /* Notify seller — high-signal in-app + email. */
+    void this.notifications.create({
+      userId: order.sellerId,
+      type: 'DISPUTE_OPENED',
+      title: 'Dispute opened',
+      message: `Buyer opened dispute ${disputeNumber} on order ${order.orderNumber}. Funds remain in escrow.`,
+      link: `/orders/${order.id}`,
+      metadata: { disputeId: dispute.id, orderId: order.id },
+      sendEmail: true,
+    });
+
+    /* Emit system message into the order chat so both sides see it in
+       their thread without polling the order page. */
+    await this.emitSystemMessage({
+      orderId: order.id,
+      event: 'DISPUTE_OPENED',
+      content: `Dispute ${disputeNumber} opened. Our team reviews within 6 hours. Funds remain in escrow.`,
+    });
+
+    return { id: dispute.id, disputeNumber: dispute.disputeNumber };
   }
 
   async getOrder(orderId: string, userId: string): Promise<OrderDetail> {

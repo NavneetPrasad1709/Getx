@@ -16,6 +16,9 @@ export * from './components/avatar';
 export * from './components/toaster';
 export { toast } from 'sonner';
 
+// Brand
+export * from './components/logo';
+
 // Custom premium
 export * from './components/magnetic-button';
 export * from './components/gradient-mesh';
@@ -30,5 +33,14 @@ export * from './lib/utils';
 export * from './lib/animations';
 
 // Re-exports so apps don't need direct deps
-export { motion, AnimatePresence, useInView, useMotionValue, useSpring } from 'framer-motion';
+export {
+  motion,
+  AnimatePresence,
+  useInView,
+  useMotionValue,
+  useSpring,
+  useReducedMotion,
+  useScroll,
+  useTransform,
+} from 'framer-motion';
 export type { Variants, MotionProps, UseInViewOptions } from 'framer-motion';

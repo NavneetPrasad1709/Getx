@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Button, Card, CardContent } from '@getx/ui';
 import { Header } from '@/components/header';
 import { LandingFooter } from '@/components/landing/landing-footer';
-import { HowItWorks } from '@/components/landing/how-it-works';
+import { HowItWorksCinematic } from '@/components/landing/how-it-works-cinematic';
 
 export const metadata: Metadata = {
   title: 'How GETX works',
@@ -85,7 +85,7 @@ export default function HowItWorksPage() {
           </div>
         </section>
 
-        <HowItWorks />
+        <HowItWorksCinematic />
 
         <section className="py-16 md:py-20 border-b">
           <div className="container max-w-5xl">

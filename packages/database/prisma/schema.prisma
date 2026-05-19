@@ -33,6 +33,17 @@ model User {
   username String? @unique
   avatar   String?
   bio      String? @db.VarChar(500)
+  // Separate from immutable @username — what shows in the profile hero.
+  displayName        String? @db.VarChar(60)
+  website            String? @db.VarChar(200)
+  twitterHandle      String? @db.VarChar(40)
+  discordHandle      String? @db.VarChar(40)
+  youtubeHandle      String? @db.VarChar(40)
+  twitchHandle       String? @db.VarChar(40)
+  preferredLanguages String[]
+  timezone           String? @db.VarChar(60)
+  // Set at signup; controls onboarding nudges (seller-tier prompt).
+  interestedInSelling Boolean @default(false)
 
   // Role (default BOTH — lazy verification strategy)
   role UserRole @default(BOTH)
@@ -71,6 +82,18 @@ model User {
   completionRate    Float? // % of completed orders
   isVerified        Boolean       @default(false)
   verifiedTier      VerifiedTier?
+  // ═══ Rank progression (Eldorado-style XP ladder) ═══
+  // Replaces verifiedTier semantically going forward. Cron auto-promotes
+  // based on xp + activity gates. verifiedTier stays for one release
+  // cycle as a compatibility shim and gets dropped in v3.1.
+  rank          UserRank @default(ROOKIE)
+  xp            Int      @default(0)
+  rankUpdatedAt DateTime @default(now())
+  // ═══ Loyalty points (separate from cash wallet) ═══
+  // 1 pt per $1 spent. Redeemable at checkout (max 50% of order). Never
+  // withdrawable; engagement reward only. Expires 12 months after earn.
+  loyaltyPoints         Int @default(0)
+  lifetimeLoyaltyPoints Int @default(0) // never decreases; powers rank too
 
   // ═══ Wallets (USD only — convert to INR at withdrawal) ═══
   buyerWallet     Float @default(0)
@@ -85,6 +108,17 @@ model User {
   paypalEmail          String?
   wiseEmail            String?
 
+  // ═══ Stripe Connect Express (seller payouts) ═══
+  // `accountId` is the acct_xxx returned by Stripe on first Express
+  // account create. `chargesEnabled` + `payoutsEnabled` track the
+  // capability flips emitted by the `account.updated` webhook; until
+  // payouts is true the seller stays in the manual-approval queue.
+  stripeConnectAccountId       String?   @unique
+  stripeConnectChargesEnabled  Boolean   @default(false)
+  stripeConnectPayoutsEnabled  Boolean   @default(false)
+  stripeConnectDetailsSubmitted Boolean  @default(false)
+  stripeConnectOnboardedAt     DateTime?
+
   // ═══ Account status ═══
   status         UserStatus @default(ACTIVE)
   banReason      String?    @db.Text
@@ -98,6 +132,9 @@ model User {
   lastLoginAt        DateTime?
   lastLoginIp        String?
   lastLoginUserAgent String?
+  // Updated on every authenticated request (throttled ~1×/60s). Powers
+  // the seller online indicator + "Last seen N min ago" labels.
+  lastSeenAt         DateTime?
   failedLoginCount   Int       @default(0)
   lockedUntil        DateTime?
   passwordChangedAt  DateTime? @default(now())
@@ -107,6 +144,9 @@ model User {
   pushNotifications  Boolean @default(true)
   smsNotifications   Boolean @default(true)
   marketingOptIn     Boolean @default(false)
+  // One-click unsubscribe token — embedded in every transactional email
+  // footer. Per-user, rotates if user manually unsubscribes + re-opts-in.
+  unsubscribeToken   String? @unique
 
   // ═══ Onboarding ═══
   onboardingCompleted Boolean @default(false)
@@ -146,6 +186,15 @@ model User {
   auditLogs    AuditLog[]
   kycDocuments KycDocument[]
 
+  savedSearches SavedSearch[]
+  loyaltyTransactions LoyaltyTransaction[]
+  referralsMade       Referral[] @relation("ReferrerOf")
+  referredBy          Referral[] @relation("ReferredBy")
+
+  addresses          Address[]
+  paymentMethods     PaymentMethod[]
+  dataExportRequests DataExportRequest[]
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime? // Soft delete
@@ -164,6 +213,15 @@ enum UserRole {
   BOTH
   ADMIN
   SUPER_ADMIN
+}
+
+enum UserRank {
+  ROOKIE   // default — no XP gates
+  RISING   // 100 XP + 1 completed order + KYC verified
+  TRUSTED  // 500 XP + 10 orders + 4.5★ + KYC
+  PRO      // 2,000 XP + 50 orders + 4.7★ + KYC
+  ELITE    // 10,000 XP + 200 orders + 4.85★ + KYC + AML
+  LEGEND   // 50,000 XP + 1000 orders + 4.9★
 }
 
 enum UserStatus {
@@ -299,6 +357,22 @@ model PasswordReset {
 
   @@index([userId])
   @@index([token])
+}
+
+// Idempotency ledger for inbound payment-provider webhooks. We insert
+// (provider, externalId) before running side-effects; the composite
+// unique index turns a replayed webhook into a P2002 error which we
+// catch and short-circuit. Prevents a captured/forged refund event
+// from being replayed to wipe a seller's wallet after legit completion.
+model WebhookEvent {
+  id         String   @id @default(cuid())
+  provider   String
+  externalId String
+  type       String
+  createdAt  DateTime @default(now())
+
+  @@unique([provider, externalId])
+  @@index([createdAt])
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -489,6 +563,12 @@ model Offer {
 
   orderId String?
 
+  // Optional pretty slug for the public share URL — `/o/{shareSlug}`
+  // when set, fallback to `/o/{id}`. Sellers can mint one via the
+  // share button (admin-side / future seller-mode v3.1). For v1 the
+  // cuid `id` is the canonical share key and shareSlug stays null.
+  shareSlug String? @unique @db.VarChar(40)
+
   conversation Conversation?
 
   createdAt DateTime @default(now())
@@ -566,7 +646,8 @@ model ProductListing {
 
   searchTags String[]
 
-  orders Order[]
+  orders                  Order[]
+  prePurchaseConversations Conversation[] @relation("ListingPrePurchaseConversations")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -622,6 +703,25 @@ model Order {
   amount     Float // Order amount (what was agreed)
   buyerFee   Float // Platform fee (8%)
   buyerTotal Float // amount + buyerFee
+
+  // GETX Coins / buyer wallet credit applied to this order. Subtracted
+  // from the chargeable amount at checkout time. Debited from
+  // User.buyerWallet immediately on apply; refunded on cancel.
+  walletApplied Float @default(0)
+
+  // Loyalty points redeemed at checkout. usdValue stays in lockstep
+  // with points (1 pt = $0.01). Cannot stack with walletApplied — the
+  // checkout flow enforces exclusivity. Debited from User.loyaltyPoints
+  // on apply; restored on cancel.
+  loyaltyPointsApplied Int   @default(0)
+  loyaltyUsdApplied    Float @default(0)
+
+  // Stripe Tax / Razorpay GST / etc — sales tax / VAT collected at
+  // checkout. Stripe Tax populates this from the buyer's billing
+  // address. Breakdown JSON holds per-jurisdiction lines for the
+  // receipt PDF.
+  taxAmount    Float @default(0)
+  taxBreakdown Json?
 
   sellerCommission Float // Platform commission (10%)
   sellerAmount     Float // amount - commission
@@ -719,11 +819,20 @@ enum PaymentProvider {
 model Conversation {
   id String @id @default(cuid())
 
-  // Linked to ONE of Order or Offer (each unique on its side)
+  // Linked to ONE of Order, Offer, or Listing (pre-purchase). Each unique
+  // on its side so duplicates can't be created.
   orderId String? @unique
   order   Order?  @relation(fields: [orderId], references: [id], onDelete: Cascade)
   offerId String? @unique
   offer   Offer?  @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  // Pre-purchase chat — buyer messaging seller about a listing without
+  // creating an order yet. Multiple PRE_PURCHASE conversations can share
+  // the same listingId (one per buyer), so this is NOT unique.
+  listingId String?
+  listing   ProductListing? @relation("ListingPrePurchaseConversations", fields: [listingId], references: [id], onDelete: SetNull)
+
+  // Discriminator — ORDER / OFFER / PRE_PURCHASE
+  type ConversationType @default(ORDER)
 
   // Always exactly two participants: buyer + seller
   buyerId  String
@@ -749,12 +858,20 @@ model Conversation {
   @@index([buyerId, status])
   @@index([sellerId, status])
   @@index([lastMessageAt])
+  @@index([listingId, buyerId])
 }
 
 enum ConversationStatus {
   ACTIVE
   CLOSED
   BLOCKED
+  SPAM
+}
+
+enum ConversationType {
+  ORDER
+  OFFER
+  PRE_PURCHASE
 }
 
 model Message {
@@ -883,6 +1000,10 @@ enum TxnType {
   BONUS
   ADJUSTMENT
   REFERRAL
+  // Buyer-side ledger entries — credited on order completion (CASHBACK) or
+  // debited when wallet credit is applied to a checkout (SPEND).
+  CASHBACK
+  SPEND
 }
 
 model Withdrawal {
@@ -1158,6 +1279,7 @@ enum NotificationType {
   ACCOUNT_SECURITY
   PROMOTIONAL
   REFERRAL
+  RANK_PROMOTED
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1222,4 +1344,231 @@ model Favorite {
   @@unique([userId, customRequestId])
   @@unique([userId, sellerId])
   @@index([userId])
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  SAVED SEARCHES + EMAIL ALERTS
+// ═══════════════════════════════════════════════════════════════
+//
+// A user-saved snapshot of the filter params they applied to a listing
+// index page. A cron worker re-runs the query every 4h and emails the
+// user when new matches or price drops appear.
+
+model SavedSearch {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Human-readable label auto-generated from filters, e.g.
+  // "Pokémon GO accounts · Lv 45+ · ₹5k-₹20k". User can override.
+  name String @db.VarChar(180)
+
+  // Game + tab the search applies to (separated for index-friendly cron
+  // queries; we look up filters by game first to scope the worker).
+  gameSlug String
+  tabType  TabType?
+
+  // Full filter snapshot — replays into ListingsService.listListings().
+  // Schema mirrors ListListingsDto. Stored as JSON so additions don't need
+  // a migration.
+  filters Json
+
+  // Alerts toggle — false means the row exists for UI but no emails fire.
+  emailAlerts Boolean @default(true)
+
+  // Last time the cron sent an email for this search. Acts as the
+  // "since" cursor for the next run.
+  lastNotifiedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([emailAlerts, lastNotifiedAt])
+  @@index([gameSlug, tabType])
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  ADDRESS BOOK (required for GST invoice)
+// ═══════════════════════════════════════════════════════════════
+
+model Address {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Recipient + delivery — kept lean for India-first; full international
+  // address-format support comes when non-INR markets open.
+  fullName    String  @db.VarChar(120)
+  phone       String? @db.VarChar(20)
+  line1       String  @db.VarChar(200)
+  line2       String? @db.VarChar(200)
+  city        String  @db.VarChar(80)
+  state       String  @db.VarChar(80)
+  postalCode  String  @db.VarChar(16)
+  country     String  @default("US") // ISO 2-letter
+  // Buyer-set hint shown on the address card ("Home" / "Office" / "Mom's").
+  label       String? @db.VarChar(40)
+  // Generic tax identifier — India GSTIN (15 chars), EU VAT ID, US EIN,
+  // BR CPF/CNPJ, etc. Validated client-side per country. Required for
+  // B2B itemised invoices where applicable.
+  taxId       String? @db.VarChar(40)
+  isDefault   Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, isDefault])
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PAYMENT METHODS (saved UPI handles — bank/card decoupled from Razorpay)
+// ═══════════════════════════════════════════════════════════════
+
+enum PaymentMethodType {
+  UPI
+  CARD // tokenised card via Razorpay — only for v2
+  BANK
+}
+
+model PaymentMethod {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type PaymentMethodType
+
+  // UPI fields — used for both incoming payment and withdraw payout.
+  upiId String? @db.VarChar(100)
+
+  // Future card slot — store only the masked PAN + Razorpay token.
+  cardLast4 String?
+  cardBrand String?
+  cardToken String? // Razorpay payment-token reference
+
+  // Buyer-set hint ("My PhonePe" / "GPay personal").
+  label     String? @db.VarChar(40)
+  isDefault Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, type, isDefault])
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  DATA EXPORT (India DPDP Act / GDPR compliance)
+// ═══════════════════════════════════════════════════════════════
+
+enum DataExportStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+  EXPIRED
+}
+
+model DataExportRequest {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status DataExportStatus @default(PENDING)
+
+  // R2 URL of the generated zip — expires after 7 days. Admin job
+  // generates this asynchronously.
+  fileUrl   String?
+  fileBytes Int?
+
+  requestedAt DateTime  @default(now())
+  completedAt DateTime?
+  expiresAt   DateTime?
+
+  failReason String? @db.Text
+
+  @@index([userId, requestedAt])
+  @@index([status, requestedAt])
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  LOYALTY POINTS (Eldorado Coins / ZX Points equivalent)
+// ═══════════════════════════════════════════════════════════════
+
+model LoyaltyTransaction {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type   LoyaltyTxnType
+  points Int // positive for earn, negative for redeem/expire
+
+  // Reference fields — only one populated per row.
+  orderId    String?
+  referralId String?
+
+  description String @db.VarChar(200)
+
+  balanceAfter Int
+
+  // 12 months from createdAt for EARNED rows. Cron sweeps daily.
+  expiresAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+  @@index([type])
+}
+
+enum LoyaltyTxnType {
+  EARNED_PURCHASE
+  EARNED_REFERRAL
+  EARNED_REVIEW
+  EARNED_TIER_BONUS
+  EARNED_FIRST_LISTING
+  EARNED_PROFILE_COMPLETE
+  REDEEMED_AT_CHECKOUT
+  EXPIRED
+  ADJUSTMENT
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  REFERRALS (signup → first-order attribution)
+// ═══════════════════════════════════════════════════════════════
+
+model Referral {
+  id   String @id @default(cuid())
+  // Stable per-user code embedded in share links (getx.gg/r/CODE).
+  code String @unique @db.VarChar(20)
+
+  referrerId String
+  referrer   User   @relation("ReferrerOf", fields: [referrerId], references: [id], onDelete: Cascade)
+
+  // Set on signup when the referee uses the code. Until then, null.
+  refereeId    String?
+  referee      User?   @relation("ReferredBy", fields: [refereeId], references: [id], onDelete: SetNull)
+  refereeEmail String? @db.VarChar(120)
+
+  status           ReferralStatus @default(PENDING)
+  rewardClaimed    Boolean        @default(false)
+  rewardPointsEach Int            @default(500) // both sides get this on first-order
+
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([referrerId])
+  @@index([refereeId])
+  @@index([status])
+}
+
+enum ReferralStatus {
+  PENDING   // code generated, no signup yet
+  SIGNED_UP // friend signed up but hasn't placed first order
+  REWARDED  // friend placed first order; both wallets credited
+  EXPIRED   // code unused for 90 days
 }

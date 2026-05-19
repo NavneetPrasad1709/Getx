@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 750" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <radialGradient id="raid-bg" cx="50%" cy="30%" r="90%">
+      <stop offset="0%" stop-color="#FF5C8A"/>
+      <stop offset="50%" stop-color="#A6195C"/>
+      <stop offset="100%" stop-color="#1A0A1F"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="750" fill="url(#raid-bg)"/>
+  <circle cx="600" cy="350" r="280" fill="none" stroke="#FFFFFF" stroke-width="4" opacity="0.18"/>
+  <circle cx="600" cy="350" r="200" fill="none" stroke="#FFCB05" stroke-width="3" opacity="0.35"/>
+  <polygon points="600,160 650,310 800,310 680,400 720,560 600,470 480,560 520,400 400,310 550,310" fill="#FFCB05" opacity="0.85"/>
+  <text x="600" y="690" fill="#FFFFFF" font-family="Inter,system-ui,sans-serif" font-size="64" font-weight="900" text-anchor="middle" letter-spacing="8">RAID</text>
+</svg>

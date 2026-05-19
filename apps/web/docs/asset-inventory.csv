@@ -1,0 +1,42 @@
+category,name,path,format,dimensions,status,usage,priority,notes
+brand,Wordmark final PNG,public/logos/getx-logo.png,PNG,~384x256,active,header (dark+light) — primary,P0,User-supplied. 2.2 MB — schedule lossless compression + WebP export
+brand,Wordmark light SVG,public/logos/getx-logo.svg,SVG,320x96,fallback,SEO / no-JS fallback,P2,Stylized typographic; PNG takes precedence in header
+brand,Wordmark dark SVG,public/logos/getx-logo-dark.svg,SVG,320x96,fallback,reserved for places that need vector,P2,Stylized; PNG is primary now
+brand,Logo mark,public/logos/getx-mark.svg,SVG,64x64,placeholder,square avatar / app tile,P0,Crop final PNG controller-X for higher fidelity
+brand,Wordmark WebP @1x,public/logos/getx-logo.webp,WebP,480x128,missing,header optimization,P1,Export from PNG for ~80% size cut
+brand,Wordmark WebP @2x,public/logos/getx-logo@2x.webp,WebP,960x256,missing,retina header,P1,
+icon,Favicon ICO,public/favicon.ico,ICO,16/32/48 multi,placeholder,browser tab,P0,Regenerate from final mark
+icon,Apple touch icon,app/apple-icon.tsx,PNG (dynamic),180x180,generated,iOS home screen,P0,next/og ImageResponse — replace gradient with brand art when ready
+icon,Browser icon,app/icon.tsx,PNG (dynamic),32x32,generated,browser tab fallback,P1,next/og ImageResponse
+icon,Safari pinned tab,public/icons/safari-pinned-tab.svg,SVG,monochrome,missing,Safari tab pin,P3,Optional
+icon,Maskable PWA icon 192,public/icons/icon-192-maskable.png,PNG,192x192,missing,Android PWA,P2,Safe area 80%
+icon,Maskable PWA icon 512,public/icons/icon-512-maskable.png,PNG,512x512,missing,Android splash,P2,Safe area 80%
+og,Default OG card,public/og/og-default.svg,SVG,1200x630,placeholder,fallback social share,P0,Render PNG version for crawlers that reject SVG
+og,Homepage OG,public/og/og-home.png,PNG,1200x630,missing,/ share preview,P1,Generate via app/opengraph-image.tsx
+og,Game listing OG,app/games/[slug]/opengraph-image.tsx,PNG (dynamic),1200x630,missing,per-game share,P1,Use cover + price
+og,Order receipt OG,app/orders/[id]/opengraph-image.tsx,PNG (dynamic),1200x630,missing,share order summary,P3,Privacy-aware
+hero,Homepage hero,public/images/hero-marketplace.webp,WebP,2560x1280,missing,/ hero,P1,Real product imagery preferred over render
+hero,Hero mobile,public/images/hero-marketplace-mobile.webp,WebP,1080x1920,missing,/ hero mobile,P1,Portrait crop
+illustration,Empty cart,public/illustrations/empty-cart.svg,SVG,400x300,missing,empty cart state,P2,Brand-aligned
+illustration,Empty orders,public/illustrations/empty-orders.svg,SVG,400x300,missing,profile empty orders,P2,
+illustration,Empty search,public/illustrations/empty-search.svg,SVG,400x300,missing,no results,P2,
+illustration,Error 404,public/illustrations/error-404.svg,SVG,500x400,missing,not-found.tsx,P2,
+illustration,Error 500,public/illustrations/error-500.svg,SVG,500x400,missing,error.tsx,P2,
+illustration,Onboarding 1,public/illustrations/onboarding-buy.svg,SVG,600x400,missing,buyer onboarding step 1,P3,
+illustration,Onboarding 2,public/illustrations/onboarding-escrow.svg,SVG,600x400,missing,buyer onboarding step 2,P3,
+illustration,Onboarding 3,public/illustrations/onboarding-deliver.svg,SVG,600x400,missing,buyer onboarding step 3,P3,
+illustration,Verified seller badge,public/icons/badge-verified.svg,SVG,48x48,missing,seller cards,P1,
+illustration,Escrow trust badge,public/icons/badge-escrow.svg,SVG,48x48,missing,checkout trust strip,P1,
+illustration,Instant delivery badge,public/icons/badge-instant.svg,SVG,48x48,missing,product cards,P2,
+game,Pokemon GO cover,public/images/games/pokemon-go-cover.webp,WebP,800x450,missing,game listing card,P1,16:9 cover
+game,Pokemon GO hero,public/images/games/pokemon-go-hero.webp,WebP,1920x720,missing,category landing,P2,Wide banner
+game,Pokemon GO icon,public/images/games/pokemon-go-icon.png,PNG,256x256,missing,game pills/breadcrumb,P1,Square
+payment,Razorpay mark,public/images/payments/razorpay.svg,SVG,120x32,missing,checkout footer,P1,Per Razorpay brand guidelines
+payment,UPI mark,public/images/payments/upi.svg,SVG,80x32,missing,payment method strip,P1,
+payment,Visa mark,public/images/payments/visa.svg,SVG,60x20,missing,payment method strip,P2,
+payment,Mastercard mark,public/images/payments/mastercard.svg,SVG,60x36,missing,payment method strip,P2,
+social,Twitter card,public/og/twitter-card.png,PNG,1200x675,missing,Twitter share,P3,Falls back to og-default if missing
+avatar,Default user avatar,public/images/avatar-default.svg,SVG,128x128,missing,user with no photo,P1,Generated initials better — consider dropping file
+avatar,Default seller avatar,public/images/avatar-seller.svg,SVG,128x128,missing,seller with no photo,P1,
+misc,Manifest screenshot wide,public/images/manifest-wide.png,PNG,1280x720,missing,PWA install prompt desktop,P3,
+misc,Manifest screenshot narrow,public/images/manifest-narrow.png,PNG,720x1280,missing,PWA install prompt mobile,P3,

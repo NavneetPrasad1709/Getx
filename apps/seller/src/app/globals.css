@@ -1,1 +1,22 @@
 @import '@getx/ui/styles';
+
+/* Bind GETX design tokens to the next/font/google variables loaded in
+   layout.tsx. The fonts package adds --font-poppins + --font-jetbrains
+   to <html>; the GETX UI styles expect --font-display / --font-body /
+   --font-mono. Wire them together once here so every token consumer
+   (font-display utility, var(--font-display) inline reads) resolves to
+   the locally hosted file. Doing this in CSS — rather than inline
+   `style` on <html> — avoids any SSR/CSR hydration mismatch. */
+:root,
+.dark {
+  --font-display: var(--font-poppins), 'Poppins', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-body:    var(--font-poppins), 'Poppins', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:    var(--font-jetbrains), 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* Hard-set the body family to the loaded Poppins so default text never
+   falls back to a serif while Tailwind utilities boot. */
+html,
+body {
+  font-family: var(--font-body);
+}

@@ -1,9 +1,35 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Card, CardContent, Input, Skeleton } from '@getx/ui';
+import {
+  Activity,
+  AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
+  ScrollText,
+  Search,
+  ShieldAlert,
+} from 'lucide-react';
+import { Input, Skeleton, motion } from '@getx/ui';
 import { AdminShell } from '@/components/admin-shell';
 import { useAdminAuditLogs } from '@/hooks/use-admin';
+
+/* GETX Admin — Audit logs.
+   ─────────────────────────────────────────────────────────────────────
+   Severity-coloured stream. Filter by severity (pill row), action
+   keyword (search), and userId (advanced input). Each row shows:
+   severity icon · action · entity:tail · user:tail · IP · time. */
+
+const EASE = [0.22, 1, 0.36, 1] as const;
+
+const SEVERITIES = [
+  { key: '', label: 'All' },
+  { key: 'DEBUG', label: 'Debug' },
+  { key: 'INFO', label: 'Info' },
+  { key: 'WARNING', label: 'Warning' },
+  { key: 'ERROR', label: 'Error' },
+  { key: 'CRITICAL', label: 'Critical' },
+] as const;
 
 interface AuditLogRow {
   id: string;
@@ -16,14 +42,15 @@ interface AuditLogRow {
   createdAt: string;
 }
 
-const SEVERITIES = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] as const;
-
-const SEVERITY_STYLES: Record<string, string> = {
-  DEBUG: 'bg-muted/50 text-muted-foreground',
-  INFO: 'bg-info/10 text-info',
-  WARNING: 'bg-warning/10 text-warning',
-  ERROR: 'bg-error/10 text-error',
-  CRITICAL: 'bg-error/20 text-error font-bold',
+const SEVERITY_META: Record<
+  string,
+  { bg: string; fg: string; stripe: string; icon: typeof Activity }
+> = {
+  DEBUG: { bg: 'bg-muted/30', fg: 'text-muted-foreground', stripe: 'bg-muted/60', icon: Activity },
+  INFO: { bg: 'bg-primary/12', fg: 'text-primary', stripe: 'bg-primary', icon: Activity },
+  WARNING: { bg: 'bg-warning/12', fg: 'text-warning', stripe: 'bg-warning', icon: AlertTriangle },
+  ERROR: { bg: 'bg-error/12', fg: 'text-error', stripe: 'bg-error', icon: AlertTriangle },
+  CRITICAL: { bg: 'bg-error/20', fg: 'text-error', stripe: 'bg-error', icon: ShieldAlert },
 };
 
 export default function AdminAuditLogsPage() {
@@ -34,26 +61,83 @@ export default function AdminAuditLogsPage() {
 
   const { data, isLoading } = useAdminAuditLogs({
     page,
-    action: actionFilter,
-    severity: severityFilter,
-    userId: userIdFilter,
+    action: actionFilter || undefined,
+    severity: severityFilter || undefined,
+    userId: userIdFilter || undefined,
   });
+
+  const rows = (data?.data ?? []) as AuditLogRow[];
+  const totalPages = data?.pagination.totalPages ?? 1;
+  const total = data?.pagination.total ?? 0;
 
   return (
     <AdminShell>
-      <div className="container max-w-7xl py-8">
-        <h1 className="font-display text-3xl font-bold mb-6">Audit Logs</h1>
+      <motion.div
+        initial="hidden"
+        animate="show"
+        variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }}
+        className="px-4 sm:px-6 lg:px-10 py-6 lg:py-8 max-w-7xl mx-auto space-y-5 lg:space-y-6"
+      >
+        <motion.div variants={{ hidden: { opacity: 0, y: 14 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: EASE } } }}>
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-primary font-bold mb-1.5">
+              System · audit
+            </div>
+            <h1 className="font-display text-3xl lg:text-4xl font-extrabold tracking-tight">
+              Audit logs
+            </h1>
+            <p className="text-[13.5px] text-muted-foreground mt-1">
+              Every privileged action recorded. Filter by severity, action, or user.
+            </p>
+          </div>
+        </motion.div>
 
-        <Card className="mb-6">
-          <CardContent className="p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-            <Input
-              placeholder="Action contains…"
-              value={actionFilter}
-              onChange={(e) => {
-                setActionFilter(e.target.value);
-                setPage(1);
-              }}
-            />
+        <motion.div
+          variants={{ hidden: { opacity: 0, y: 14 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: EASE } } }}
+          className="sticky top-0 z-10 -mx-4 sm:-mx-6 lg:-mx-10 px-4 sm:px-6 lg:px-10 py-3 bg-background/85 backdrop-blur-xl border-b border-border space-y-2"
+        >
+          <div className="flex items-center gap-1.5 overflow-x-auto -mx-1 px-1 pb-0.5">
+            {SEVERITIES.map((s) => {
+              const active = severityFilter === s.key;
+              return (
+                <motion.button
+                  key={s.key || 'all'}
+                  type="button"
+                  onClick={() => {
+                    setSeverityFilter(s.key);
+                    setPage(1);
+                  }}
+                  whileTap={{ scale: 0.95 }}
+                  className={`
+                    relative inline-flex items-center h-9 px-3.5 rounded-full text-[12.5px] font-semibold whitespace-nowrap transition-colors
+                    ${active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}
+                  `}
+                >
+                  {active && (
+                    <motion.span
+                      layoutId="admin-audit-pill"
+                      className="absolute inset-0 -z-10 rounded-full bg-surface ring-1 ring-border shadow-[0_4px_12px_-4px_hsl(var(--foreground)/0.15)]"
+                      transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                    />
+                  )}
+                  {s.label}
+                </motion.button>
+              );
+            })}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative flex-1 min-w-[200px] max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <input
+                value={actionFilter}
+                onChange={(e) => {
+                  setActionFilter(e.target.value);
+                  setPage(1);
+                }}
+                placeholder="Action contains…  (e.g., ORDER_REFUND)"
+                className="w-full h-9 pl-9 pr-3 rounded-full bg-muted/25 ring-1 ring-transparent focus:bg-surface focus:ring-primary/35 text-[13px] outline-none transition-all"
+              />
+            </div>
             <Input
               placeholder="User ID"
               value={userIdFilter}
@@ -61,108 +145,166 @@ export default function AdminAuditLogsPage() {
                 setUserIdFilter(e.target.value);
                 setPage(1);
               }}
+              className="h-9 w-full sm:w-56 rounded-full text-[12.5px]"
             />
-            <select
-              value={severityFilter}
-              onChange={(e) => {
-                setSeverityFilter(e.target.value);
-                setPage(1);
-              }}
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="">All severities</option>
-              {SEVERITIES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </CardContent>
-        </Card>
+          </div>
+        </motion.div>
 
         {isLoading ? (
-          <Skeleton className="h-96" />
-        ) : !data || data.data.length === 0 ? (
-          <Card>
-            <CardContent className="p-12 text-center text-muted-foreground">
-              No audit entries match
-            </CardContent>
-          </Card>
+          <div className="space-y-2">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <Skeleton key={i} className="h-14 rounded-xl" />
+            ))}
+          </div>
+        ) : rows.length === 0 ? (
+          <EmptyState />
         ) : (
-          <Card>
-            <CardContent className="p-0 overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="border-b bg-muted/30">
-                  <tr>
-                    <th className="text-left p-3">When</th>
-                    <th className="text-left p-3">Severity</th>
-                    <th className="text-left p-3">Action</th>
-                    <th className="text-left p-3">Entity</th>
-                    <th className="text-left p-3">User</th>
-                    <th className="text-left p-3">IP</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(data.data as AuditLogRow[]).map((log) => (
-                    <tr
-                      key={log.id}
-                      className="border-b hover:bg-muted/20 last:border-b-0 align-top"
-                    >
-                      <td className="p-3 text-xs whitespace-nowrap text-muted-foreground">
-                        {new Date(log.createdAt).toLocaleString()}
-                      </td>
-                      <td className="p-3">
-                        <span
-                          className={`text-[10px] px-2 py-0.5 rounded uppercase ${
-                            SEVERITY_STYLES[log.severity] ?? SEVERITY_STYLES.DEBUG
-                          }`}
-                        >
-                          {log.severity}
-                        </span>
-                      </td>
-                      <td className="p-3 font-mono text-xs">{log.action}</td>
-                      <td className="p-3 text-xs">
-                        {log.entity}
-                        {log.entityId && (
-                          <span className="text-muted-foreground"> #{log.entityId.slice(-8)}</span>
-                        )}
-                      </td>
-                      <td className="p-3 text-xs font-mono">
-                        {log.userId ? log.userId.slice(-8) : '—'}
-                      </td>
-                      <td className="p-3 text-xs text-muted-foreground">{log.ipAddress ?? '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </CardContent>
-          </Card>
-        )}
-
-        {data && data.pagination.totalPages > 1 && (
-          <div className="flex justify-center gap-2 mt-6 items-center">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => setPage(page - 1)}
-            >
-              Previous
-            </Button>
-            <span className="text-sm">
-              Page {page} of {data.pagination.totalPages} · {data.pagination.total} total
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= data.pagination.totalPages}
-              onClick={() => setPage(page + 1)}
-            >
-              Next
-            </Button>
+          <div className="rounded-2xl bg-surface ring-1 ring-border overflow-hidden">
+            <ul className="divide-y divide-border">
+              {rows.map((log, idx) => (
+                <motion.li
+                  key={log.id}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: Math.min(idx, 8) * 0.025, duration: 0.3, ease: EASE }}
+                >
+                  <AuditRow log={log} />
+                </motion.li>
+              ))}
+            </ul>
           </div>
         )}
-      </div>
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between flex-wrap gap-3 pt-2">
+            <span className="font-mono text-[11px] text-muted-foreground">
+              Page <span className="text-foreground font-bold tabular-nums">{page}</span> of{' '}
+              <span className="text-foreground font-bold tabular-nums">{totalPages}</span> ·{' '}
+              {total.toLocaleString('en-US')} total
+            </span>
+            <div className="flex items-center gap-2">
+              <PaginationButton disabled={page <= 1} onClick={() => setPage(page - 1)} dir="prev" />
+              <PaginationButton
+                disabled={page >= totalPages}
+                onClick={() => setPage(page + 1)}
+                dir="next"
+              />
+            </div>
+          </div>
+        )}
+      </motion.div>
     </AdminShell>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════ */
+/*  AUDIT ROW                                                           */
+/* ══════════════════════════════════════════════════════════════════ */
+function AuditRow({ log }: { log: AuditLogRow }) {
+  const meta = SEVERITY_META[log.severity] ?? SEVERITY_META.INFO;
+  const Icon = meta.icon;
+  return (
+    <div className="relative flex items-center gap-3 sm:gap-4 p-3.5 sm:p-4 pl-5 hover:bg-muted/15 transition-colors">
+      <div aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${meta.stripe}`} />
+      <div className={`grid place-items-center h-9 w-9 rounded-xl shrink-0 ${meta.bg} ${meta.fg}`}>
+        <Icon className="h-4 w-4" strokeWidth={2.25} />
+      </div>
+      <div className="flex-1 min-w-0 grid grid-cols-1 lg:grid-cols-[1fr_1fr_1fr_auto] gap-3 items-center">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+            <span
+              className={`font-mono text-[9.5px] uppercase tracking-[0.18em] font-bold ${meta.fg}`}
+            >
+              {log.severity}
+            </span>
+            <span className="font-mono text-[12px] text-foreground truncate">{log.action}</span>
+          </div>
+          <div className="text-[11px] text-muted-foreground truncate">
+            {log.entity ? (
+              <>
+                {log.entity}
+                {log.entityId && (
+                  <span className="font-mono opacity-75 ml-1">:{log.entityId.slice(-8)}</span>
+                )}
+              </>
+            ) : (
+              'System event'
+            )}
+          </div>
+        </div>
+        <div className="text-[11px] hidden lg:block">
+          <div className="font-mono uppercase tracking-[0.18em] text-muted-foreground font-bold mb-0.5">
+            User
+          </div>
+          <div className="font-mono text-foreground truncate">
+            {log.userId ? log.userId.slice(-12) : '—'}
+          </div>
+        </div>
+        <div className="text-[11px] hidden lg:block">
+          <div className="font-mono uppercase tracking-[0.18em] text-muted-foreground font-bold mb-0.5">
+            IP
+          </div>
+          <div className="font-mono text-foreground truncate">{log.ipAddress ?? '—'}</div>
+        </div>
+        <div className="font-mono text-[10.5px] text-muted-foreground tabular-nums shrink-0 text-right">
+          {new Date(log.createdAt).toLocaleString([], {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PaginationButton({
+  disabled,
+  onClick,
+  dir,
+}: {
+  disabled: boolean;
+  onClick: () => void;
+  dir: 'prev' | 'next';
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`
+        inline-flex items-center gap-1 h-9 px-3.5 rounded-full text-[12.5px] font-semibold transition-colors
+        ${
+          disabled
+            ? 'bg-muted/15 text-muted-foreground/50 cursor-not-allowed'
+            : 'bg-muted/25 hover:bg-muted/40 ring-1 ring-border text-foreground'
+        }
+      `}
+    >
+      {dir === 'prev' ? (
+        <>
+          <ChevronLeft className="h-3.5 w-3.5" />
+          Previous
+        </>
+      ) : (
+        <>
+          Next
+          <ChevronRight className="h-3.5 w-3.5" />
+        </>
+      )}
+    </button>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="rounded-3xl bg-surface ring-1 ring-border p-12 text-center">
+      <div className="grid place-items-center h-12 w-12 rounded-full bg-muted/30 text-muted-foreground mx-auto mb-3">
+        <ScrollText className="h-5 w-5" />
+      </div>
+      <div className="font-display font-bold text-[15px] mb-1">No audit entries match</div>
+      <div className="text-[13px] text-muted-foreground">Loosen the filters.</div>
+    </div>
   );
 }

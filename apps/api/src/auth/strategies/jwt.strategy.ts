@@ -13,6 +13,12 @@ export interface JwtPayload {
   exp?: number;
 }
 
+/* In-memory throttle for lastSeenAt writes — never touch the DB more than
+   once per user per LAST_SEEN_THROTTLE_MS. Matches the SocketRateLimiter
+   pattern already in use; swap to Redis when the API goes multi-replica. */
+const LAST_SEEN_THROTTLE_MS = 60 * 1000;
+const lastSeenWrites = new Map<string, number>();
+
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
@@ -49,6 +55,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         country: true,
         name: true,
         avatar: true,
+        passwordChangedAt: true,
       },
     });
 
@@ -60,6 +67,37 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (user.status === 'SUSPENDED')
       throw new UnauthorizedException('Account suspended');
 
-    return user;
+    /* Invalidate tokens issued before the last password change. After a
+       password reset every still-valid access token gets rejected on
+       its next request — stolen credentials cannot outlive the reset.
+       1-second grace handles tokens issued in the same second as the
+       reset write (iat is whole seconds, passwordChangedAt is ms). */
+    if (user.passwordChangedAt && typeof payload.iat === 'number') {
+      const issuedAtMs = payload.iat * 1000;
+      if (issuedAtMs + 1000 < user.passwordChangedAt.getTime()) {
+        throw new UnauthorizedException(
+          'Session expired due to password change. Please login again.',
+        );
+      }
+    }
+
+    void this.touchLastSeen(user.id);
+
+    const { passwordChangedAt: _pca, ...safe } = user;
+    return safe;
+  }
+
+  /* Fire-and-forget — never blocks the request, never crashes the auth flow.
+     Errors are swallowed because lastSeenAt is a soft-signal field. */
+  private touchLastSeen(userId: string): void {
+    const now = Date.now();
+    const lastWrite = lastSeenWrites.get(userId) ?? 0;
+    if (now - lastWrite < LAST_SEEN_THROTTLE_MS) return;
+    lastSeenWrites.set(userId, now);
+    this.prisma.user
+      .update({ where: { id: userId }, data: { lastSeenAt: new Date(now) } })
+      .catch(() => {
+        /* swallow — stale lastSeenAt is acceptable */
+      });
   }
 }

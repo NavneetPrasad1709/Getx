@@ -177,7 +177,7 @@ export default function TestDesignPage() {
             <CardHeader>
               <CardTitle>Typography</CardTitle>
               <CardDescription>
-                Cal Sans display · Plus Jakarta body · JetBrains mono
+                Poppins display · Poppins body · JetBrains mono
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -186,7 +186,7 @@ export default function TestDesignPage() {
                 Get gaming.
               </p>
               <p className="text-base">
-                Plus Jakarta Sans body text — clean, modern, and friendly to read at any size.
+                Poppins body text — clean, modern, and friendly to read at any size.
               </p>
               <p className="font-mono text-lg">$99.99 — JetBrains Mono for prices &amp; codes</p>
             </CardContent>

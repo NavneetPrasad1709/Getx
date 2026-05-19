@@ -92,22 +92,69 @@ async function main() {
   });
 
   // ── Demo sellers ───────────────────────────────────────────────
-  console.log('  · 5 demo sellers (IN, KYC verified)');
+  console.log('  · 5 demo sellers (global, Sumsub-verified)');
   const demoHash = await bcrypt.hash(DEMO_PASSWORD, 12);
-  const sellers: Array<{ email: string; name: string; tier: VerifiedTier }> = [
-    { email: 'seller1@demo.getx.gg', name: 'PokeMaster_IN', tier: VerifiedTier.PREMIUM },
-    { email: 'seller2@demo.getx.gg', name: 'TrainerProfi', tier: VerifiedTier.VERIFIED },
-    { email: 'seller3@demo.getx.gg', name: 'RaidLegend', tier: VerifiedTier.ELITE },
-    { email: 'seller4@demo.getx.gg', name: 'ShinyHunter', tier: VerifiedTier.BASIC },
-    { email: 'seller5@demo.getx.gg', name: 'StardustKing', tier: VerifiedTier.PREMIUM },
+
+  /* Seller bios — written like real-world top marketplace profiles
+     (Eldorado / PlayerAuctions reference). Each one names a specialty,
+     a delivery promise, and one personal-touch line. Countries diversified
+     post global pivot (was all India). */
+  const sellers: Array<{
+    email: string;
+    name: string;
+    username: string;
+    tier: VerifiedTier;
+    country: string;
+    bio: string;
+  }> = [
+    {
+      email: 'seller1@demo.getx.gg',
+      name: 'Rio Aoyama',
+      username: 'rio.gg',
+      tier: VerifiedTier.PREMIUM,
+      country: 'JP',
+      bio: "Tokyo-based PoGo veteran since launch. I source clean OG 2018-2020 accounts only — no recovery flags, all PTC + Google linked and unlinked on transfer. Median ship time under 8 minutes. If you're after a specific team/level combo, message me before you buy.",
+    },
+    {
+      email: 'seller2@demo.getx.gg',
+      name: 'Luca Bianchi',
+      username: 'luca',
+      tier: VerifiedTier.VERIFIED,
+      country: 'IT',
+      bio: 'PokéCoin top-ups, auto-delivered. I run a small Milan-based outfit with my brother. We use only verified payment rails, never reseller risk. Coins land in your account before you finish reading this bio.',
+    },
+    {
+      email: 'seller3@demo.getx.gg',
+      name: 'Aria Chen',
+      username: 'aria.pkmn',
+      tier: VerifiedTier.ELITE,
+      country: 'SG',
+      bio: 'Master League rank pushes a specialty. 4+ years of competitive PoGo PvP, peaked Legend 5 times. I stream every boost end-to-end so you see exactly what I do. Singapore timezone, 24/7 chat support.',
+    },
+    {
+      email: 'seller4@demo.getx.gg',
+      name: 'Maya Patel',
+      username: 'maya',
+      tier: VerifiedTier.BASIC,
+      country: 'CA',
+      bio: 'Shiny hunter, Toronto. New on GetX but verified through Sumsub and shipping same-day. Specialise in regionals and shiny legendaries. Ask me about full Pokedex 80%+ accounts.',
+    },
+    {
+      email: 'seller5@demo.getx.gg',
+      name: 'Kai Müller',
+      username: 'kai',
+      tier: VerifiedTier.PREMIUM,
+      country: 'DE',
+      bio: 'Berlin · raid passes, item bundles, event gear. I keep stock fresh — every drop ships within an hour of buyer confirmation. Bulk discounts available for raid groups (3+ orders).',
+    },
   ];
 
-  // Deterministic ratings/sales so seed is idempotent (not Math.random)
+  /* Deterministic ratings/sales so seed stays idempotent — no randomness. */
   const sellerStats: Record<VerifiedTier, { rating: number; sales: number; completion: number }> = {
-    BASIC: { rating: 4.5, sales: 12, completion: 95 },
-    VERIFIED: { rating: 4.7, sales: 45, completion: 97 },
-    PREMIUM: { rating: 4.85, sales: 120, completion: 98.5 },
-    ELITE: { rating: 4.95, sales: 320, completion: 99.2 },
+    BASIC: { rating: 4.62, sales: 18, completion: 96.5 },
+    VERIFIED: { rating: 4.78, sales: 64, completion: 97.8 },
+    PREMIUM: { rating: 4.88, sales: 142, completion: 98.6 },
+    ELITE: { rating: 4.96, sales: 384, completion: 99.4 },
   };
 
   for (const seller of sellers) {
@@ -119,9 +166,10 @@ async function main() {
         email: seller.email,
         password: demoHash,
         name: seller.name,
-        username: seller.name.toLowerCase(),
+        username: seller.username,
+        bio: seller.bio,
         role: UserRole.BOTH,
-        country: 'IN',
+        country: seller.country,
         emailVerified: new Date(),
         kycStatus: KycStatus.VERIFIED,
         kycLevel: KycLevel.LEVEL_2,

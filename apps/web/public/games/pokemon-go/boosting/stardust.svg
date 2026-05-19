@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 750" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <radialGradient id="dust-bg" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#7A92FF"/>
+      <stop offset="55%" stop-color="#2A3A8E"/>
+      <stop offset="100%" stop-color="#040829"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="750" fill="url(#dust-bg)"/>
+  <g fill="#FFFFFF" opacity="0.85">
+    <circle cx="250" cy="180" r="3"/><circle cx="950" cy="220" r="3"/>
+    <circle cx="180" cy="500" r="2"/><circle cx="1050" cy="540" r="2"/>
+    <circle cx="400" cy="120" r="2"/><circle cx="820" cy="100" r="3"/>
+    <circle cx="320" cy="640" r="2"/><circle cx="900" cy="660" r="2"/>
+  </g>
+  <g transform="translate(600 370)" fill="#FFFFFF">
+    <polygon points="0,-200 30,-30 200,0 30,30 0,200 -30,30 -200,0 -30,-30" opacity="0.95"/>
+    <polygon points="0,-110 18,-18 110,0 18,18 0,110 -18,18 -110,0 -18,-18" fill="#FFE25C" opacity="0.85"/>
+  </g>
+  <text x="600" y="690" fill="#FFFFFF" font-family="Inter,system-ui,sans-serif" font-size="58" font-weight="900" text-anchor="middle" letter-spacing="8">STARDUST</text>
+</svg>

@@ -171,7 +171,7 @@ export function AccountsFilters({ filters, onUpdate, onClear }: Props) {
           <select
             value={filters.region ?? ''}
             onChange={(e) => onUpdate({ region: e.target.value || undefined })}
-            className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+            className="w-full h-11 sm:h-10 rounded-md border border-input bg-background px-3 text-sm"
           >
             <option value="">Any region</option>
             {REGIONS.map((r) => (
@@ -186,7 +186,7 @@ export function AccountsFilters({ filters, onUpdate, onClear }: Props) {
           <select
             value={filters.platform ?? ''}
             onChange={(e) => onUpdate({ platform: e.target.value || undefined })}
-            className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+            className="w-full h-11 sm:h-10 rounded-md border border-input bg-background px-3 text-sm"
           >
             <option value="">Any platform</option>
             {PLATFORMS.map((p) => (

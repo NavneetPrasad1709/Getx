@@ -1,15 +1,30 @@
 import type { Metadata } from 'next';
+import dynamic from 'next/dynamic';
 import { Header } from '@/components/header';
 import { HeroSection } from '@/components/landing/hero-section';
-import { GamesShowcase } from '@/components/landing/games-showcase';
-import { HowItWorks } from '@/components/landing/how-it-works';
-import { ServicesPreview } from '@/components/landing/services-preview';
-import { TrustSignals } from '@/components/landing/trust-signals';
-import { StatsCounter } from '@/components/landing/stats-counter';
-import { Testimonials } from '@/components/landing/testimonials';
-import { ForSellers } from '@/components/landing/for-sellers';
-import { FinalCTA } from '@/components/landing/final-cta';
+import { PartnerTrustBand } from '@/components/landing/partner-trust-band';
 import { LandingFooter } from '@/components/landing/landing-footer';
+
+/* Below-fold landing sections are lazy-loaded so the initial JS chunk
+   stays lean. They still SSR (ssr:true is the default) — buyer sees
+   the static HTML immediately; the hydration JS streams in as the user
+   scrolls. Each section pulls framer-motion which makes it a worthwhile
+   split point. */
+const GamesShowcase = dynamic(() =>
+  import('@/components/landing/games-showcase').then((m) => m.GamesShowcase),
+);
+const HowItWorksLight = dynamic(() =>
+  import('@/components/landing/how-it-works-light').then((m) => m.HowItWorksLight),
+);
+const ForSellers = dynamic(() =>
+  import('@/components/landing/for-sellers').then((m) => m.ForSellers),
+);
+const UspCards = dynamic(() =>
+  import('@/components/landing/usp-cards').then((m) => m.UspCards),
+);
+const FinalCTA = dynamic(() =>
+  import('@/components/landing/final-cta').then((m) => m.FinalCTA),
+);
 
 export const metadata: Metadata = {
   title: 'GETX — The Premium Gaming Marketplace',
@@ -50,16 +65,51 @@ export const metadata: Metadata = {
 export default function HomePage() {
   return (
     <div className="min-h-screen flex flex-col">
+      {/* Theme-aware gradient backdrop — two layers, one shows per mode
+          via Tailwind's dark: variant. Both anchor a soft primary-blue
+          radial at top-center; the underlying color shifts. */}
+
+      {/* Light-mode backdrop — soft white with subtle blue bloom */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 -z-20 block dark:hidden"
+        style={{
+          backgroundImage:
+            'radial-gradient(ellipse 80% 55% at 50% 0%, hsl(var(--primary) / 0.10), transparent 65%), linear-gradient(180deg, hsl(220 20% 99%) 0%, hsl(220 18% 96%) 100%)',
+        }}
+      />
+
+      {/* Dark-mode backdrop — deep near-black with primary bloom */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 -z-20 hidden dark:block"
+        style={{
+          backgroundImage:
+            'radial-gradient(ellipse 80% 55% at 50% 0%, hsl(var(--primary) / 0.14), transparent 65%), linear-gradient(180deg, hsl(222 47% 5%) 0%, hsl(222 47% 3%) 100%)',
+        }}
+      />
+
       <Header />
-      <main className="flex-1">
+      <main id="main" className="relative flex-1">
+        {/* Continuous dotted bg — sits above the gradient, below content.
+            Uses --foreground token so dots invert with theme: dark
+            dots on light bg, light dots on dark bg. */}
+        <div
+          aria-hidden
+          className="pointer-events-none fixed inset-0 -z-10 opacity-[0.06] dark:opacity-[0.05]"
+          style={{
+            backgroundImage:
+              'radial-gradient(hsl(var(--foreground)) 1px, transparent 1px)',
+            backgroundSize: '28px 28px',
+          }}
+        />
+
         <HeroSection />
+        <PartnerTrustBand />
         <GamesShowcase />
-        <HowItWorks />
-        <ServicesPreview />
-        <TrustSignals />
-        <StatsCounter />
-        <Testimonials />
+        <HowItWorksLight />
         <ForSellers />
+        <UspCards />
         <FinalCTA />
       </main>
       <LandingFooter />

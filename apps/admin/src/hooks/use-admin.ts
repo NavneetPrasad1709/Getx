@@ -131,6 +131,48 @@ export function useAdminReviews(filters: Record<string, unknown> = {}) {
   });
 }
 
+/* Action queue — every "what needs me right now" stat the admin sees
+   on the dashboard alerts strip. Fans out small list queries (limit=1)
+   in parallel so we get accurate counts from `pagination.total` without
+   loading rows. Each query is independent so partial failures degrade
+   gracefully. */
+interface ListResponse {
+  data: unknown[];
+  pagination: Pagination;
+}
+
+export function useAdminAlerts() {
+  const disputed = useAdminOrders({ status: 'DISPUTED', limit: 1 }) as {
+    data?: ListResponse;
+    isLoading: boolean;
+  };
+  const pendingReview = useAdminListings({ status: 'PENDING_REVIEW', limit: 1 }) as {
+    data?: ListResponse;
+    isLoading: boolean;
+  };
+  const removedListings = useAdminListings({ status: 'REMOVED', limit: 1 }) as {
+    data?: ListResponse;
+    isLoading: boolean;
+  };
+  const hiddenReviews = useAdminReviews({ hidden: true, limit: 1 }) as {
+    data?: ListResponse;
+    isLoading: boolean;
+  };
+  return {
+    counts: {
+      disputes: disputed.data?.pagination.total ?? 0,
+      pendingListings: pendingReview.data?.pagination.total ?? 0,
+      removedListings: removedListings.data?.pagination.total ?? 0,
+      hiddenReviews: hiddenReviews.data?.pagination.total ?? 0,
+    },
+    isLoading:
+      disputed.isLoading ||
+      pendingReview.isLoading ||
+      removedListings.isLoading ||
+      hiddenReviews.isLoading,
+  };
+}
+
 export function useAdminAuditLogs(filters: Record<string, unknown> = {}) {
   return useQuery({
     queryKey: ['admin', 'audit-logs', filters],

@@ -3,6 +3,9 @@ import { z } from 'zod';
 export const ListListingsSchema = z.object({
   gameSlug: z.string().optional(),
   tabType: z.enum(['ACCOUNTS', 'TOP_UPS', 'ITEMS']).optional(),
+  /* Public seller-storefront filter — narrows listings to one seller's
+     ACTIVE inventory. Used by /users/[username] listings tab. */
+  sellerId: z.string().optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(24),
   sort: z

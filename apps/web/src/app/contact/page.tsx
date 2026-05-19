@@ -20,27 +20,27 @@ const channels = [
   {
     label: 'Account help',
     detail: 'Locked out, payments not arriving, profile not updating?',
-    cta: { label: 'support@getx.gg', href: 'mailto:support@getx.gg' },
+    cta: { label: 'support@getx.live', href: 'mailto:support@getx.live' },
   },
   {
     label: 'Privacy / data requests',
     detail: 'Access, export, or delete your personal data.',
-    cta: { label: 'privacy@getx.gg', href: 'mailto:privacy@getx.gg' },
+    cta: { label: 'support@getx.live', href: 'mailto:support@getx.live?subject=Privacy%20request' },
   },
   {
     label: 'Press',
     detail: 'Story ideas, interviews, statements.',
-    cta: { label: 'press@getx.gg', href: 'mailto:press@getx.gg' },
+    cta: { label: 'support@getx.live', href: 'mailto:support@getx.live?subject=Press%20enquiry' },
   },
   {
     label: 'Partnerships',
     detail: 'Game studios, payment partners, content creators.',
-    cta: { label: 'partners@getx.gg', href: 'mailto:partners@getx.gg' },
+    cta: { label: 'support@getx.live', href: 'mailto:support@getx.live?subject=Partnership' },
   },
   {
     label: 'Security disclosure',
     detail: 'Responsible disclosure of vulnerabilities. Please don’t test against live user data.',
-    cta: { label: 'security@getx.gg', href: 'mailto:security@getx.gg' },
+    cta: { label: 'support@getx.live', href: 'mailto:support@getx.live?subject=Security%20disclosure' },
   },
 ];
 

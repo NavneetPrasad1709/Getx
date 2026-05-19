@@ -8,6 +8,10 @@ export const ListRequestsSchema = z.object({
     .enum(['OPEN', 'AWAITING_CHOICE', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'])
     .optional(),
 
+  /* Federated-search query — case-insensitive substring across title +
+     description. Bounded length keeps the query plan cheap. */
+  q: z.string().trim().min(2).max(80).optional(),
+
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   sort: z

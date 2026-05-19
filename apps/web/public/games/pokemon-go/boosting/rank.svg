@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 750" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="rank-bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1A1F4D"/>
+      <stop offset="60%" stop-color="#0E1340"/>
+      <stop offset="100%" stop-color="#040614"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="750" fill="url(#rank-bg)"/>
+  <g transform="translate(600 360)" opacity="0.9">
+    <path d="M -120,-160 L 120,-160 L 120,-40 Q 120,80 0,140 Q -120,80 -120,-40 Z" fill="#FFCB05"/>
+    <path d="M -160,-120 Q -200,-100 -200,-40 Q -200,30 -150,40 L -120,40 L -120,-120 Z" fill="#FFCB05" opacity="0.7"/>
+    <path d="M 160,-120 Q 200,-100 200,-40 Q 200,30 150,40 L 120,40 L 120,-120 Z" fill="#FFCB05" opacity="0.7"/>
+    <text x="0" y="40" fill="#1A1410" font-family="Inter,system-ui,sans-serif" font-size="72" font-weight="900" text-anchor="middle">1</text>
+    <rect x="-100" y="140" width="200" height="40" fill="#FFCB05" opacity="0.6"/>
+    <rect x="-130" y="180" width="260" height="50" fill="#FFCB05"/>
+  </g>
+  <text x="600" y="690" fill="#FFFFFF" font-family="Inter,system-ui,sans-serif" font-size="48" font-weight="900" text-anchor="middle" letter-spacing="6">RANK PUSH</text>
+</svg>

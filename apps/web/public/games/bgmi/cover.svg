@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 750" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="bgmi-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF9900"/>
+      <stop offset="55%" stop-color="#9F2A00"/>
+      <stop offset="100%" stop-color="#1A0900"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="750" fill="url(#bgmi-bg)"/>
+  <g stroke="#FFFFFF" stroke-width="2" opacity="0.08" fill="none">
+    <path d="M 0 600 L 1200 200"/><path d="M 0 700 L 1200 300"/>
+    <path d="M 0 500 L 1200 100"/>
+  </g>
+  <polygon points="200,650 400,400 600,500 800,300 1000,450 1200,250 1200,750 0,750" fill="#040614" opacity="0.5"/>
+  <text x="600" y="380" fill="#FFFFFF" font-family="Inter,system-ui,sans-serif" font-size="160" font-weight="900" text-anchor="middle" letter-spacing="-2" stroke="#1A1410" stroke-width="3">BGMI</text>
+  <text x="600" y="445" fill="#FFCB05" font-family="ui-monospace,monospace" font-size="22" text-anchor="middle" letter-spacing="6" opacity="0.85">BATTLEGROUNDS · MOBILE INDIA</text>
+</svg>

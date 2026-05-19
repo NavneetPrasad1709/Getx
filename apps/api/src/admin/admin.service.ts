@@ -39,7 +39,56 @@ const USERS_LIST_SELECT = {
   emailVerified: true,
 } satisfies Prisma.UserSelect;
 
-const USER_DETAIL_INCLUDE = {
+/* Explicit allow-list of User fields safe to surface in the admin
+   detail view. Sensitive columns (password, twoFactorSecret,
+   aadhaarHash, panHash, sumsubExternalUserId, ...) are deliberately
+   omitted so a compromised admin session cannot exfiltrate credentials
+   or PII hashes. Add fields here only after confirming they're safe
+   to ship to the admin UI. */
+const USER_DETAIL_SELECT = {
+  id: true,
+  email: true,
+  username: true,
+  name: true,
+  displayName: true,
+  avatar: true,
+  bio: true,
+  country: true,
+  preferredCurrency: true,
+  role: true,
+  status: true,
+  isSeller: true,
+  sellerActivatedAt: true,
+  sellerRating: true,
+  buyerRating: true,
+  totalSales: true,
+  totalReviews: true,
+  verifiedTier: true,
+  rank: true,
+  xp: true,
+  kycLevel: true,
+  kycStatus: true,
+  kycProvider: true,
+  kycSubmittedAt: true,
+  kycVerifiedAt: true,
+  kycRejectionReason: true,
+  emailVerified: true,
+  phoneVerified: true,
+  marketingOptIn: true,
+  loyaltyPoints: true,
+  lifetimeLoyaltyPoints: true,
+  buyerWallet: true,
+  sellerWallet: true,
+  pendingEarnings: true,
+  totalEarned: true,
+  banReason: true,
+  bannedAt: true,
+  bannedBy: true,
+  suspendedUntil: true,
+  lastLoginAt: true,
+  lastLoginIp: true,
+  createdAt: true,
+  updatedAt: true,
   _count: {
     select: {
       buyerOrders: true,
@@ -49,7 +98,23 @@ const USER_DETAIL_INCLUDE = {
       sellerOffers: true,
     },
   },
-} satisfies Prisma.UserInclude;
+} satisfies Prisma.UserSelect;
+
+/* Parties on an order — never include `buyer: true` / `seller: true`
+   because Prisma's default include returns every User column. */
+const ORDER_PARTY_SELECT = {
+  id: true,
+  username: true,
+  name: true,
+  email: true,
+  avatar: true,
+  country: true,
+  isSeller: true,
+  status: true,
+  sellerRating: true,
+  buyerRating: true,
+  totalSales: true,
+} satisfies Prisma.UserSelect;
 
 const ORDER_LIST_INCLUDE = {
   buyer: { select: { id: true, username: true, name: true, email: true } },
@@ -57,8 +122,8 @@ const ORDER_LIST_INCLUDE = {
 } satisfies Prisma.OrderInclude;
 
 const ORDER_DETAIL_INCLUDE = {
-  buyer: true,
-  seller: true,
+  buyer: { select: ORDER_PARTY_SELECT },
+  seller: { select: ORDER_PARTY_SELECT },
   productListing: true,
   customRequest: true,
   payouts: true,
@@ -86,7 +151,7 @@ export type AdminUserList = Prisma.UserGetPayload<{
   select: typeof USERS_LIST_SELECT;
 }>;
 export type AdminUserDetail = Prisma.UserGetPayload<{
-  include: typeof USER_DETAIL_INCLUDE;
+  select: typeof USER_DETAIL_SELECT;
 }>;
 export type AdminOrderListItem = Prisma.OrderGetPayload<{
   include: typeof ORDER_LIST_INCLUDE;
@@ -246,7 +311,7 @@ export class AdminService {
   async getUserDetail(userId: string): Promise<AdminUserDetail> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: USER_DETAIL_INCLUDE,
+      select: USER_DETAIL_SELECT,
     });
     if (!user) throw new NotFoundException();
     return user;

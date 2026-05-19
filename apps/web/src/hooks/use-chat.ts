@@ -25,10 +25,14 @@ export interface ChatMessage {
   sender: ChatUser;
 }
 
+export type ConversationKind = 'ORDER' | 'OFFER' | 'PRE_PURCHASE';
+
 export interface Conversation {
   id: string;
   orderId: string | null;
   offerId: string | null;
+  listingId: string | null;
+  type: ConversationKind;
   buyerId: string;
   sellerId: string;
   buyer: ChatUser;
@@ -38,11 +42,12 @@ export interface Conversation {
     id: string;
     request: { id: string; requestNumber: string; title: string };
   } | null;
+  listing: { id: string; title: string; slug: string | null; tabType: string } | null;
   lastMessageAt: string | null;
   lastMessageText: string | null;
   buyerUnread: number;
   sellerUnread: number;
-  status: 'ACTIVE' | 'CLOSED' | 'BLOCKED';
+  status: 'ACTIVE' | 'CLOSED' | 'BLOCKED' | 'SPAM';
 }
 
 export function useStartConversation() {
@@ -50,6 +55,24 @@ export function useStartConversation() {
   return useMutation<Conversation, Error, { orderId?: string; offerId?: string }>({
     mutationFn: async (payload) => {
       const { data } = await api.post<Conversation>('/conversations', payload);
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['conversations'] }),
+  });
+}
+
+/* Pre-purchase chat — buyer messages a seller about a listing without
+   creating an order. Rate-limit + spam errors come back from the API as
+   axios errors with response.data.message; surface to the caller via
+   mutation.error so the UI can toast or guide. */
+export function useOpenPrePurchaseChat() {
+  const qc = useQueryClient();
+  return useMutation<Conversation, Error, { listingId: string }>({
+    mutationFn: async (payload) => {
+      const { data } = await api.post<Conversation>(
+        '/conversations/pre-purchase',
+        payload,
+      );
       return data;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['conversations'] }),

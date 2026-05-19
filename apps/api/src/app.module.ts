@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -19,6 +20,17 @@ import { ReviewsModule } from './reviews/reviews.module';
 import { UsersModule } from './users/users.module';
 import { AdminModule } from './admin/admin.module';
 import { HealthModule } from './health/health.module';
+import { SavedSearchesModule } from './saved-searches/saved-searches.module';
+import { WalletModule } from './wallet/wallet.module';
+import { AccountModule } from './account/account.module';
+import { AddressesModule } from './addresses/addresses.module';
+import { PaymentMethodsModule } from './payment-methods/payment-methods.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
+import { ReferralsModule } from './referrals/referrals.module';
+import { LoyaltyModule } from './loyalty/loyalty.module';
+import { RankModule } from './rank/rank.module';
+import { PayoutsModule } from './payouts/payouts.module';
+import { WaitlistModule } from './waitlist/waitlist.module';
 
 @Module({
   imports: [
@@ -26,21 +38,33 @@ import { HealthModule } from './health/health.module';
       isGlobal: true,
       cache: true,
     }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     AuditModule,
     MailModule,
     AuthModule,
     GamesModule,
     ListingsModule,
+    SavedSearchesModule,
     CustomRequestsModule,
     UploadsModule,
     OffersModule,
     OrdersModule,
     PaymentsModule,
+    WalletModule,
     ConversationsModule,
     NotificationsModule,
     ReviewsModule,
     UsersModule,
+    AccountModule,
+    AddressesModule,
+    PaymentMethodsModule,
+    WebhooksModule,
+    ReferralsModule,
+    LoyaltyModule,
+    RankModule,
+    PayoutsModule,
+    WaitlistModule,
     AdminModule,
     HealthModule,
   ],

@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import type { Prisma } from '@getx/database';
 import { PrismaService } from '../prisma/prisma.service';
+import { LoyaltyService } from '../loyalty/loyalty.service';
 import { ListListingsDto } from './dto/list-listings.dto';
 import { CreateListingDto, UpdateListingDto } from './dto/create-listing.dto';
 
@@ -39,8 +40,11 @@ const LIST_SELECT = {
       sellerRating: true,
       totalSales: true,
       verifiedTier: true,
+      rank: true,
       isVerified: true,
       country: true,
+      lastSeenAt: true,
+      responseTimeMin: true,
     },
   },
   game: {
@@ -65,9 +69,11 @@ const DETAIL_INCLUDE = {
       completionRate: true,
       responseTimeMin: true,
       verifiedTier: true,
+      rank: true,
       isVerified: true,
       country: true,
       createdAt: true,
+      lastSeenAt: true,
     },
   },
   game: {
@@ -115,6 +121,7 @@ const RELATED_SELECT = {
       name: true,
       sellerRating: true,
       verifiedTier: true,
+      rank: true,
     },
   },
 } satisfies Prisma.ProductListingSelect;
@@ -157,7 +164,10 @@ export interface ListListingsResponse {
 
 @Injectable()
 export class ListingsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private loyalty: LoyaltyService,
+  ) {}
 
   async listListings(filters: ListListingsDto): Promise<ListListingsResponse> {
     const where: Prisma.ProductListingWhereInput = {
@@ -171,6 +181,10 @@ export class ListingsService {
 
     if (filters.tabType) {
       where.tabType = filters.tabType;
+    }
+
+    if (filters.sellerId) {
+      where.sellerId = filters.sellerId;
     }
 
     if (filters.priceMin !== undefined || filters.priceMax !== undefined) {
@@ -481,41 +495,62 @@ export class ListingsService {
       slug = `${baseSlug}-${attempt}`;
     }
 
-    const listing = await this.prisma.productListing.create({
-      data: {
-        sku,
-        slug,
-        sellerId,
-        gameId: game.id,
-        tabType: dto.tabType,
-        productType: dto.productType,
-        title: dto.title,
-        description: dto.description,
-        price: dto.price,
-        currency: dto.currency,
-        originalPrice: dto.originalPrice,
-        discountPercent: dto.originalPrice
-          ? Math.round(
-              ((dto.originalPrice - dto.price) / dto.originalPrice) * 100,
-            )
-          : null,
-        stock: dto.stock,
-        images: dto.images,
-        videoUrl: dto.videoUrl,
-        attributes: dto.attributes as Prisma.InputJsonValue,
-        deliveryType: dto.deliveryType,
-        deliveryTime: dto.deliveryTime,
-        searchTags: dto.searchTags,
-        status: dto.publish ? 'ACTIVE' : 'DRAFT',
-      },
+    /* Detect "first listing" before insert so we know whether to award
+       the EARNED_FIRST_LISTING bonus. We award on first ACTIVE listing
+       (DRAFT alone doesn't qualify) — `publish === true` guards this. */
+    const existingPublished = await this.prisma.productListing.count({
+      where: { sellerId, status: 'ACTIVE' },
     });
+    const isFirstPublishedListing = dto.publish && existingPublished === 0;
 
-    if (dto.publish) {
-      await this.prisma.game.update({
-        where: { id: game.id },
-        data: { totalListings: { increment: 1 } },
+    const listing = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.productListing.create({
+        data: {
+          sku,
+          slug,
+          sellerId,
+          gameId: game.id,
+          tabType: dto.tabType,
+          productType: dto.productType,
+          title: dto.title,
+          description: dto.description,
+          price: dto.price,
+          currency: dto.currency,
+          originalPrice: dto.originalPrice,
+          discountPercent: dto.originalPrice
+            ? Math.round(
+                ((dto.originalPrice - dto.price) / dto.originalPrice) * 100,
+              )
+            : null,
+          stock: dto.stock,
+          images: dto.images,
+          videoUrl: dto.videoUrl,
+          attributes: dto.attributes as Prisma.InputJsonValue,
+          deliveryType: dto.deliveryType,
+          deliveryTime: dto.deliveryTime,
+          searchTags: dto.searchTags,
+          status: dto.publish ? 'ACTIVE' : 'DRAFT',
+        },
       });
-    }
+
+      if (dto.publish) {
+        await tx.game.update({
+          where: { id: game.id },
+          data: { totalListings: { increment: 1 } },
+        });
+      }
+
+      if (isFirstPublishedListing) {
+        await this.loyalty.earn(tx, {
+          userId: sellerId,
+          type: 'EARNED_FIRST_LISTING',
+          points: 50,
+          description: 'First listing published — welcome bonus',
+        });
+      }
+
+      return created;
+    });
 
     return listing;
   }

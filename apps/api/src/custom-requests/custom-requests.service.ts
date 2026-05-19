@@ -187,6 +187,15 @@ export class CustomRequestsService {
     }
     if (filters.tabType) where.tabType = filters.tabType;
     if (filters.subCategory) where.subCategory = filters.subCategory;
+    /* Text search across title + description. case-insensitive contains
+       maps to PG ILIKE; trigram index on these columns lands in a
+       follow-up if the row count ever justifies it. */
+    if (filters.q) {
+      where.OR = [
+        { title: { contains: filters.q, mode: 'insensitive' } },
+        { description: { contains: filters.q, mode: 'insensitive' } },
+      ];
+    }
 
     if (filters.mine) {
       if (!currentUserId) {

@@ -1,4 +1,5 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { Public } from '../auth/decorators/public.decorator';
 import {
   GamesService,
@@ -15,6 +16,18 @@ export class GamesController {
   @Get()
   listGames(): Promise<GameListItem[]> {
     return this.games.listGames();
+  }
+
+  /* Public federated game search — used by the /search page. Placed
+     BEFORE the :slug route so "search" doesn't get matched as a slug. */
+  @Public()
+  @Get('search')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  searchGames(
+    @Query('q') q: string,
+    @Query('limit') limit?: string,
+  ): Promise<GameListItem[]> {
+    return this.games.searchGames(q, limit ? parseInt(limit, 10) : 6);
   }
 
   @Public()

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 750" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <radialGradient id="val-bg" cx="30%" cy="40%" r="80%">
+      <stop offset="0%" stop-color="#FF4B3D"/>
+      <stop offset="55%" stop-color="#C8161A"/>
+      <stop offset="100%" stop-color="#3A0606"/>
+    </radialGradient>
+    <linearGradient id="val-glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFB35C" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#FF1B1B" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="750" fill="url(#val-bg)"/>
+  <rect width="1200" height="750" fill="url(#val-glow)"/>
+  <circle cx="900" cy="180" r="220" fill="#FFB35C" opacity="0.14"/>
+  <circle cx="240" cy="620" r="180" fill="#FFFFFF" opacity="0.06"/>
+  <g transform="translate(600 375)">
+    <polygon points="0,-180 156,-90 156,90 0,180 -156,90 -156,-90" fill="none" stroke="#FFFFFF" stroke-width="6" opacity="0.85"/>
+    <polygon points="0,-90 80,-45 80,45 0,90 -80,45 -80,-45" fill="#FFCB05" opacity="0.15"/>
+    <text x="0" y="22" fill="#FFFFFF" font-family="Inter,system-ui,sans-serif" font-size="76" font-weight="900" text-anchor="middle" letter-spacing="6">VALOR</text>
+  </g>
+  <text x="60" y="700" fill="#FFFFFF" font-family="ui-monospace,monospace" font-size="22" opacity="0.6" letter-spacing="5">TEAM · RED</text>
+</svg>

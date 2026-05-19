@@ -1,4 +1,5 @@
 import type { MetadataRoute } from 'next';
+import { listComingSoonGames } from '@/lib/coming-soon-games';
 
 const WEB_URL = process.env.NEXT_PUBLIC_WEB_URL ?? 'https://getx.gg';
 
@@ -43,6 +44,17 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${WEB_URL}/terms`, lastModified: now, priority: 0.3 },
     { url: `${WEB_URL}/privacy`, lastModified: now, priority: 0.3 },
   ];
+
+  // Pre-launch coming-soon pages — indexed for search intent ("buy
+  // valorant accounts" etc.) so waitlist captures the demand.
+  for (const g of listComingSoonGames()) {
+    entries.push({
+      url: `${WEB_URL}/games/${g.slug}/coming-soon`,
+      lastModified: now,
+      priority: 0.7,
+      changeFrequency: 'weekly',
+    });
+  }
 
   // The 7 boosting service forms get their own URLs.
   const services = [

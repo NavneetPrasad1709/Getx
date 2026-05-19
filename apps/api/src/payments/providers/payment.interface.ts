@@ -31,6 +31,14 @@ export interface WebhookEvent {
   externalId: string;
   amount?: number;
   currency?: string;
+  /* Tax surfaced from provider (Stripe Tax / Paddle automatic tax /
+     Razorpay GST). Stored on Order.taxAmount for receipts/audits. */
+  taxAmount?: number;
+  taxBreakdown?: {
+    tax?: number;
+    discount?: number;
+    shipping?: number;
+  };
   metadata: Record<string, string>;
   rawPayload: Record<string, unknown>;
 }
@@ -40,7 +48,22 @@ export interface RefundResult {
   refundId: string;
 }
 
-export type ProviderName = 'paddle' | 'mock';
+export type ProviderName =
+  | 'stripe'
+  | 'paypal'
+  | 'razorpay'
+  | 'paddle'
+  | 'mock';
+
+/* Maps each frontend/business provider name to the Prisma
+   PaymentProvider enum value persisted on Order.paymentProvider. */
+export const PROVIDER_TO_PRISMA: Record<ProviderName, string | null> = {
+  stripe: 'STRIPE',
+  paypal: 'PAYPAL',
+  razorpay: 'RAZORPAY',
+  paddle: 'PADDLE',
+  mock: null,
+};
 
 export interface PaymentProvider {
   readonly name: ProviderName;

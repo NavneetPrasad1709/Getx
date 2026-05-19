@@ -40,6 +40,14 @@ export interface OfferSeller {
   totalSales: number;
   completionRate: number | null;
   verifiedTier: string | null;
+  rank?:
+    | 'ROOKIE'
+    | 'RISING'
+    | 'TRUSTED'
+    | 'PRO'
+    | 'ELITE'
+    | 'LEGEND'
+    | null;
   country: string;
 }
 

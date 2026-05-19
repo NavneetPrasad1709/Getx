@@ -90,8 +90,15 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client.userId = payload.sub;
 
       const sockets = this.userSockets.get(payload.sub) ?? new Set<string>();
+      const wasOnline = sockets.size > 0;
       sockets.add(client.id);
       this.userSockets.set(payload.sub, sockets);
+
+      /* Broadcast `online` only on the first socket per user — additional
+         tabs from the same user don't re-fire the event. */
+      if (!wasOnline) {
+        this.emitPresence(payload.sub, true);
+      }
 
       this.logger.log(`Socket connected: user=${payload.sub} sid=${client.id}`);
     } catch {
@@ -107,9 +114,25 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       sockets.delete(client.id);
       if (sockets.size === 0) {
         this.userSockets.delete(client.userId);
+        /* Last socket gone — broadcast offline. Subscribers on the buyer
+           side flip the green dot back to gray. */
+        this.emitPresence(client.userId, false);
       }
     }
     this.logger.log(`Socket disconnected: user=${client.userId}`);
+  }
+
+  /* Presence broadcast — emits `presence:user:${id}` so anyone subscribed
+     to that specific user gets a flip event without flooding the whole
+     namespace with every user's transitions. Frontend hooks subscribe
+     using socket.on(`presence:user:${id}`). */
+  private emitPresence(userId: string, isOnline: boolean): void {
+    const event = `presence:user:${userId}`;
+    this.server.emit(event, {
+      userId,
+      isOnline,
+      at: new Date().toISOString(),
+    });
   }
 
   /**

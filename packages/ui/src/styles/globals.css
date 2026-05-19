@@ -1,62 +1,139 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+/* GETX design system — global tokens.
+   ────────────────────────────────────────────────────────────────────
+   Premium gaming-marketplace palette. Single source of truth for every
+   color used across the web, seller, and admin apps. All values stored
+   as raw HSL triplets so they compose with arbitrary alpha via
+   `hsl(var(--token) / 0.X)` — never hex.
+
+   Two modes:
+     :root → light mode defaults
+     .dark → dark mode overrides (toggled via `class` strategy on <html>)
+
+   When adding a new semantic role, define it under BOTH :root and .dark
+   so the theme toggle never strands a token. */
+
+/* Fonts (Poppins + JetBrains Mono) are loaded by next/font/google from
+   apps/web/src/app/layout.tsx (and equivalents in seller/admin). That
+   self-hosts the WOFF2 + injects CSS variables, eliminating the
+   render-blocking @import that used to live here. */
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@font-face {
-  font-family: 'Cal Sans';
-  src: url('https://cdn.jsdelivr.net/npm/@fontsource/cal-sans/files/cal-sans-latin-600-normal.woff2')
-    format('woff2');
-  font-weight: 600 700;
-  font-display: swap;
-}
-
 @layer base {
   :root {
-    --primary: 217 91% 60%;
-    --primary-hover: 224 76% 48%;
-    --primary-foreground: 0 0% 100%;
-    --accent: 38 92% 50%;
-    --accent-hover: 32 95% 44%;
-    --accent-foreground: 222 47% 11%;
-    --background: 220 14% 98%;
-    --foreground: 222 47% 11%;
-    --muted: 215 20% 65%;
-    --muted-foreground: 215 16% 47%;
-    --surface: 0 0% 100%;
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 217 91% 60%;
-    --success: 158 64% 52%;
-    --warning: 32 95% 44%;
-    --error: 0 84% 60%;
-    --info: 217 91% 60%;
-    --radius: 0.5rem;
-    --font-display: 'Cal Sans', system-ui, sans-serif;
-    --font-body: 'Plus Jakarta Sans', system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', monospace;
+    /* ── Surfaces ──────────────────────────────────────────────────── */
+    --background:           220 25% 99%;        /* page bg, subtle warm white */
+    --foreground:           222 47%  8%;        /* primary text on bg */
+    --surface:              0   0%  100%;       /* card / popover surface */
+    --surface-elevated:     220 25%  96%;       /* elevated surface (header utilities, kbd, etc.) */
+    /* --muted is a mid-tone used WITH alpha (`bg-muted/30` etc.) to
+       create subtle fills. It is NOT meant as a solid bg — that's
+       --background / --surface. */
+    --muted:                215 20%  65%;
+    --muted-foreground:     215 16%  45%;       /* secondary text */
+
+    /* ── Border + interactive frame ─────────────────────────────────── */
+    --border:               220 13%  90%;       /* default 1px borders */
+    --border-strong:        220 13%  82%;       /* hover / emphasized borders */
+    --input:                220 13%  90%;       /* form-control borders */
+    --ring:                 217 91%  55%;       /* focus rings */
+
+    /* ── Brand ──────────────────────────────────────────────────────── */
+    --primary:              217 91%  55%;       /* core brand blue */
+    --primary-hover:        217 91%  48%;       /* deeper on hover */
+    --primary-foreground:   0   0%   100%;      /* text on primary */
+    --primary-glow:         217 91%  62%;       /* shadow / glow color */
+
+    --accent:               38  92%  50%;       /* warm gold accent */
+    --accent-hover:         32  95%  44%;
+    --accent-foreground:    222 47%  10%;
+
+    --hot:                  348 89%  58%;       /* trending / hot marker (magenta-red) */
+    --hot-foreground:       0   0%   100%;
+
+    /* ── Status ─────────────────────────────────────────────────────── */
+    --success:              158 64%  42%;       /* slightly darker for white-bg contrast */
+    --success-foreground:   0   0%   100%;
+    --warning:              32  95%  44%;
+    --warning-foreground:   222 47%  10%;
+    --error:                0   84%  56%;
+    --error-foreground:     0   0%   100%;
+    --destructive:          0   84%  56%;       /* alias of error for shadcn compatibility */
+    --destructive-foreground: 0 0%   100%;
+    --info:                 217 91%  55%;
+    --info-foreground:      0   0%   100%;
+
+    /* ── Geometry ───────────────────────────────────────────────────── */
+    --radius:               0.5rem;
+
+    /* ── Typography ─────────────────────────────────────────────────── */
+    --font-display: 'Poppins', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-body:    'Poppins', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-mono:    'JetBrains Mono', ui-monospace, monospace;
   }
 
   .dark {
-    --primary: 217 91% 65%;
-    --primary-hover: 217 91% 60%;
-    --primary-foreground: 0 0% 100%;
-    --accent: 38 92% 50%;
-    --accent-hover: 38 92% 55%;
-    --accent-foreground: 222 47% 11%;
-    --background: 222 47% 6%;
-    --foreground: 210 40% 98%;
-    --muted: 215 16% 47%;
-    --muted-foreground: 215 20% 65%;
-    --surface: 222 35% 12%;
-    --border: 217 19% 27%;
-    --input: 217 19% 27%;
-    --ring: 217 91% 65%;
+    /* ── Surfaces ──────────────────────────────────────────────────── */
+    --background:           222 47%   5%;       /* near-black page bg with blue tint */
+    --foreground:           210 40%   98%;      /* near-white text */
+    --surface:              222 35%   9%;       /* raised card */
+    --surface-elevated:     222 30%  13%;       /* one notch above surface */
+    /* Mid-tone for `bg-muted/X` alpha fills — keep readable on the
+       dark bg without losing its grey character. */
+    --muted:                215 16%  47%;
+    /* Near-white secondary text — descriptions and body copy were
+       still reading grey at 88%; bumped to 92% lightness so muted
+       text is effectively white with only the lightest tonal
+       de-emphasis vs the 98% foreground used by headlines. */
+    --muted-foreground:     210 30%  92%;
+
+    /* ── Border + interactive frame ─────────────────────────────────── */
+    --border:               217 19%  18%;
+    --border-strong:        217 19%  26%;
+    --input:                217 19%  18%;
+    --ring:                 217 91%  65%;
+
+    /* ── Brand ──────────────────────────────────────────────────────── */
+    --primary:              217 91%  62%;       /* brighter blue for dark bg pop */
+    --primary-hover:        217 91%  55%;
+    --primary-foreground:   222 47%   8%;       /* dark text on bright blue */
+    --primary-glow:         217 91%  70%;
+
+    --accent:               38  92%  55%;
+    --accent-hover:         38  92%  60%;
+    --accent-foreground:    222 47%  10%;
+
+    --hot:                  348 89%  62%;
+    --hot-foreground:       0   0%   100%;
+
+    /* ── Status ─────────────────────────────────────────────────────── */
+    --success:              158 64%  48%;
+    --success-foreground:   222 47%   8%;
+    --warning:              32  95%  55%;
+    --warning-foreground:   222 47%  10%;
+    --error:                0   84%  62%;
+    --error-foreground:     0   0%   100%;
+    --destructive:          0   84%  62%;
+    --destructive-foreground: 0 0%   100%;
+    --info:                 217 91%  62%;
+    --info-foreground:      222 47%   8%;
   }
 
+  /* Default border color uses the token so a bare `border` class
+     respects theme. */
   * {
     @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    /* Improve color rendering on macOS / iOS displays */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Match the body bg so flashes during route transitions stay clean. */
+    background-color: hsl(var(--background));
   }
 
   body {
@@ -64,30 +141,46 @@
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   }
 
+  /* Headings — Poppins at heavy weights, tight tracking. */
+  h1, h2, h3, h4, h5, h6,
+  .font-display {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.018em;
+    line-height: 1.1;
+  }
+  h1, h2 {
+    font-weight: 800;
+    letter-spacing: -0.025em;
+    line-height: 1.04;
+  }
+
+  /* Scrollbar — themed to muted token so it disappears into the page
+     in both modes. */
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
   }
-
   ::-webkit-scrollbar-track {
     background: transparent;
   }
-
   ::-webkit-scrollbar-thumb {
-    background: hsl(var(--muted) / 0.3);
+    background: hsl(var(--muted-foreground) / 0.3);
     border-radius: 5px;
   }
-
   ::-webkit-scrollbar-thumb:hover {
-    background: hsl(var(--muted) / 0.5);
+    background: hsl(var(--muted-foreground) / 0.5);
   }
 
+  /* Selection color — primary tint, theme-aware. */
+  ::selection {
+    background-color: hsl(var(--primary) / 0.25);
+    color: hsl(var(--foreground));
+  }
+
+  /* Focus rings — primary, with offset against background. */
   :focus-visible {
     @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
-  }
-
-  html {
-    scroll-behavior: smooth;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -102,10 +195,12 @@
 }
 
 @layer utilities {
+  /* Frosted glass surface — token-driven so it adapts to mode. */
   .glass {
-    @apply bg-white/40 dark:bg-black/40 backdrop-blur-2xl border border-white/20 dark:border-white/10;
+    @apply bg-background/40 backdrop-blur-2xl border border-border;
   }
 
+  /* Film-grain noise overlay — drop on any container for analog feel. */
   .noise-overlay::before {
     content: '';
     position: fixed;
@@ -117,15 +212,12 @@
     mix-blend-mode: overlay;
   }
 
+  /* Brand-gradient text. */
   .gradient-text {
     @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent;
   }
 
-  .animation-delay-2000 {
-    animation-delay: 2s;
-  }
-
-  .animation-delay-4000 {
-    animation-delay: 4s;
-  }
+  /* Blob-animation helper delays */
+  .animation-delay-2000 { animation-delay: 2s; }
+  .animation-delay-4000 { animation-delay: 4s; }
 }

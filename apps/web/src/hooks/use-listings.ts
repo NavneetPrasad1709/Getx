@@ -6,6 +6,14 @@ import { api } from '@/lib/api';
 export type TabType = 'ACCOUNTS' | 'TOP_UPS' | 'ITEMS';
 export type SortOption = 'newest' | 'price-asc' | 'price-desc' | 'rating-desc' | 'popular';
 
+export type Rank =
+  | 'ROOKIE'
+  | 'RISING'
+  | 'TRUSTED'
+  | 'PRO'
+  | 'ELITE'
+  | 'LEGEND';
+
 export interface SellerSummary {
   id: string;
   username: string | null;
@@ -14,8 +22,17 @@ export interface SellerSummary {
   sellerRating: number;
   totalSales: number;
   verifiedTier: string | null;
+  /* Eldorado-style rank ribbon — supersedes verifiedTier. Optional while
+     existing rows haven't been backfilled. */
+  rank?: Rank | null;
   isVerified: boolean;
   country: string;
+  /* Backend-populated soft signal — kept optional so older API responses
+     don't break the type. */
+  lastSeenAt?: string | null;
+  /* Median seller reply time in minutes — used for the "Replies in ~Xm"
+     trust chip on listing cards. Optional while the column backfills. */
+  responseTimeMin?: number | null;
 }
 
 export interface SellerDetail extends SellerSummary {
@@ -29,6 +46,23 @@ export interface GameSummary {
   slug: string;
   name: string;
   icon: string;
+}
+
+/* A buyable variant tied to a parent listing — used for top-ups (e.g. 5,500 /
+   14,500 / 25,000 PokéCoins on one PDP) and boosting tiers (Bronze / Silver
+   / Gold league push). Backend should link via `parentListingId` and expose
+   the array via `Listing.variants`. */
+export interface ListingVariant {
+  id: string;
+  label: string;
+  sublabel?: string | null;
+  price: number;
+  originalPrice?: number | null;
+  stockLeft?: number | null;
+  /** Hours-string for boosting tier ETAs, e.g. "6h". */
+  deliveryEta?: string | null;
+  /** Short callout chip, e.g. "Most popular", "Best value", "Limited". */
+  badge?: string | null;
 }
 
 export interface Listing {
@@ -52,6 +86,17 @@ export interface Listing {
   favoriteCount: number;
   isFeatured: boolean;
   createdAt: string;
+  /* Optional urgency signals — surfaced on PDP BuyPanel + MobileBuyBar.
+     When absent, the client picks a deterministic stub from listing.id so
+     the chip still renders. Backend should populate these fields once the
+     deal/timer table lands. */
+  endsAt?: string | null;
+  stockLeft?: number | null;
+  soldRecent?: number | null;
+  /* Optional package variants — surfaced via VariantPicker on PDPs. Cheapest
+     variant is the default selection. Listings with 0-1 variants render the
+     plain BuyPanel. */
+  variants?: ListingVariant[] | null;
   seller: SellerSummary;
   game: GameSummary;
 }
@@ -79,6 +124,7 @@ export interface RelatedListing {
     name: string | null;
     sellerRating: number;
     verifiedTier: string | null;
+    rank?: Rank | null;
   };
 }
 
@@ -98,6 +144,8 @@ export interface ListingsResponse {
 export interface ListingFilters {
   gameSlug?: string;
   tabType?: TabType;
+  /* Filter to a single seller's storefront — used by /users/[username]. */
+  sellerId?: string;
   page?: number;
   limit?: number;
   sort?: SortOption;

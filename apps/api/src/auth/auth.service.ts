@@ -3,11 +3,13 @@ import {
   BadRequestException,
   UnauthorizedException,
   ConflictException,
+  ForbiddenException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { randomBytes } from 'crypto';
+import { randomBytes, randomInt } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import type { Request, Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
@@ -17,9 +19,17 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import {
+  isAllowedForSoftLaunch,
+  isHardBlockedCountry,
+  parseAllowlist,
+  shouldFlagName,
+} from './sanctions';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private prisma: PrismaService,
     private jwt: JwtService,
@@ -29,6 +39,53 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto, req: Request) {
+    /* Sanctions gate — before any DB work. Hard-blocked countries get
+       a 403 + a "service not available in your region" message; we
+       don't reveal which country list caused the block. Audit-log the
+       attempt so ops can see attempted signups from blocked geos. */
+    if (isHardBlockedCountry(dto.country)) {
+      await this.audit.log({
+        action: 'auth.register_blocked_country',
+        entity: 'User',
+        entityId: 'pending',
+        metadata: { country: dto.country, email: dto.email },
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        severity: 'WARNING',
+      });
+      throw new ForbiddenException(
+        'GETX is not available in your region yet. Join the waitlist at getx.gg/waitlist.',
+      );
+    }
+
+    /* Soft-launch allowlist gate — only US + UK + IN during the pilot
+       phase (set via ALLOWED_SIGNUP_COUNTRIES env). Outside the
+       allowlist we collect the email as a waitlist entry and return a
+       distinct "joined waitlist" error so the frontend can route the
+       user to the right confirmation page. Empty env = global rollout
+       (gate disabled). */
+    const allowlist = parseAllowlist(
+      this.config.get<string>('ALLOWED_SIGNUP_COUNTRIES'),
+    );
+    if (!isAllowedForSoftLaunch(dto.country, allowlist)) {
+      await this.audit.log({
+        action: 'auth.register_outside_softlaunch',
+        entity: 'User',
+        entityId: 'pending',
+        metadata: {
+          country: dto.country,
+          email: dto.email,
+          allowlist: allowlist ? Array.from(allowlist) : null,
+        },
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        severity: 'INFO',
+      });
+      throw new ForbiddenException(
+        'Soft launch in progress. We&apos;re onboarding the US and UK first — join the waitlist and we&apos;ll email when your country is live.',
+      );
+    }
+
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
       select: { id: true },
@@ -36,6 +93,11 @@ export class AuthService {
     if (existing) {
       throw new ConflictException('Email already registered');
     }
+
+    /* Name-watchlist soft flag — does NOT block; just flags for manual
+       review in the admin queue. Most hits are false-positives so we
+       let the row land in PENDING_REVIEW for an admin to clear. */
+    const flagForReview = shouldFlagName(dto.name);
 
     const hashedPassword = await bcrypt.hash(dto.password, 12);
     const otp = this.generateOTP();
@@ -52,6 +114,12 @@ export class AuthService {
           kycLevel: 'LEVEL_0',
           kycStatus: 'NONE',
           marketingOptIn: dto.marketingOptIn ?? false,
+          /* Both SELLER and BOTH count as a soft seller-interest signal
+             so the post-signup nudges (apply for seller mode, complete
+             KYC) target the right cohort. BUYER stays false so a pure
+             buyer signup doesn't get seller-side prompts. */
+          interestedInSelling:
+            dto.interest === 'SELLER' || dto.interest === 'BOTH',
           emailNotifications: true,
           pushNotifications: true,
           smsNotifications: true,
@@ -80,11 +148,16 @@ export class AuthService {
       action: 'auth.register',
       entity: 'User',
       entityId: user.id,
-      metadata: { country: dto.country },
+      metadata: { country: dto.country, flagged: flagForReview },
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-      severity: 'INFO',
+      severity: flagForReview ? 'WARNING' : 'INFO',
     });
+    if (flagForReview) {
+      this.logger.warn(
+        `Name-watchlist flag for user ${user.id} (${dto.country}) — queued for manual review.`,
+      );
+    }
 
     return {
       message:
@@ -512,7 +585,10 @@ export class AuthService {
   // ─── helpers ───────────────────────────────────────────
 
   private generateOTP(): string {
-    return Math.floor(100000 + Math.random() * 900000).toString();
+    /* crypto.randomInt is uniform over [min, max). Math.random is a
+       seeded PRNG and produces guessable OTPs after a few observations,
+       so it must never gate auth flows. */
+    return randomInt(100000, 1000000).toString();
   }
 
   private async generateTokens(

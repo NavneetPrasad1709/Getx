@@ -5,18 +5,24 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { Prisma } from '@getx/database';
+import { Prisma } from '@getx/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ConversationsService } from '../conversations/conversations.service';
 import { ChatGateway } from '../conversations/chat.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
+import { LoyaltyService } from '../loyalty/loyalty.service';
 import { MockPaymentProvider } from './providers/mock.provider';
 import { PaddlePaymentProvider } from './providers/paddle.provider';
+import { StripePaymentProvider } from './providers/stripe.provider';
+import { PayPalPaymentProvider } from './providers/paypal.provider';
+import { RazorpayPaymentProvider } from './providers/razorpay.provider';
 import {
   CheckoutOptions,
   CheckoutSession,
   PaymentProvider,
+  PROVIDER_TO_PRISMA,
+  ProviderName,
   WebhookEvent,
 } from './providers/payment.interface';
 
@@ -25,7 +31,7 @@ const ESCROW_HOLD_DAYS = 3;
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
-  private readonly provider: PaymentProvider;
+  private readonly providers: Record<ProviderName, PaymentProvider>;
 
   constructor(
     private config: ConfigService,
@@ -36,9 +42,45 @@ export class PaymentsService {
     private notifications: NotificationsService,
     mock: MockPaymentProvider,
     paddle: PaddlePaymentProvider,
+    stripe: StripePaymentProvider,
+    paypal: PayPalPaymentProvider,
+    razorpay: RazorpayPaymentProvider,
+    private loyalty: LoyaltyService,
   ) {
-    this.provider = config.get<string>('PADDLE_API_KEY') ? paddle : mock;
-    this.logger.log(`Payment provider: ${this.provider.name}`);
+    this.providers = {
+      mock,
+      paddle,
+      stripe,
+      paypal,
+      razorpay,
+    };
+
+    const hasStripe = !!config.get<string>('STRIPE_SECRET_KEY');
+    const hasRazorpay = !!config.get<string>('RAZORPAY_KEY_ID');
+    const hasPayPal = !!config.get<string>('PAYPAL_CLIENT_ID');
+    const hasPaddle = !!config.get<string>('PADDLE_API_KEY');
+    this.logger.log(
+      `Payment providers — stripe:${hasStripe} paypal:${hasPayPal} razorpay:${hasRazorpay} paddle:${hasPaddle} (mock fallback always on)`,
+    );
+  }
+
+  /**
+   * Per-order provider routing.
+   *  - INR  → Razorpay (or mock if RAZORPAY_KEY_ID missing)
+   *  - else → Stripe   (or mock if STRIPE_SECRET_KEY missing)
+   *
+   * Future: PayPal as buyer-opt-in once `Order.buyerPreferredProvider`
+   * (or similar) is added. Paddle stays available via direct lookup
+   * for legacy orders but is not auto-selected.
+   */
+  private resolveProvider(currency: string): PaymentProvider {
+    const upper = currency.toUpperCase();
+    if (upper === 'INR') {
+      const hasKey = !!this.config.get<string>('RAZORPAY_KEY_ID');
+      return hasKey ? this.providers.razorpay : this.providers.mock;
+    }
+    const hasStripe = !!this.config.get<string>('STRIPE_SECRET_KEY');
+    return hasStripe ? this.providers.stripe : this.providers.mock;
   }
 
   async createCheckoutSession(
@@ -63,9 +105,16 @@ export class PaymentsService {
     const webUrl =
       this.config.get<string>('WEB_URL') ?? 'http://localhost:3000';
 
+    /* Subtract any GETX Coins or redeemed loyalty points applied to this
+       order so the gateway only charges the remaining balance. Both are
+       debited at apply-time (WalletService.applyToOrder /
+       LoyaltyService.applyToOrder) and are mutually exclusive by spec. */
+    const creditApplied =
+      (order.walletApplied ?? 0) + (order.loyaltyUsdApplied ?? 0);
+    const chargeable = Math.max(0, order.buyerTotal - creditApplied);
     const opts: CheckoutOptions = {
       orderId: order.id,
-      amount: Math.round(order.buyerTotal * 100),
+      amount: Math.round(chargeable * 100),
       currency: order.currency,
       buyerEmail: order.buyer.email,
       buyerName: order.buyer.name ?? 'Buyer',
@@ -75,12 +124,18 @@ export class PaymentsService {
       cancelUrl: `${webUrl}/orders/${order.id}?payment=cancelled`,
     };
 
-    const session = await this.provider.createCheckout(opts);
+    const provider = this.resolveProvider(order.currency);
+    const session = await provider.createCheckout(opts);
 
     await this.prisma.order.update({
       where: { id: orderId },
       data: {
-        paymentProvider: this.provider.name === 'paddle' ? 'PADDLE' : null,
+        paymentProvider: PROVIDER_TO_PRISMA[provider.name] as
+          | 'STRIPE'
+          | 'PAYPAL'
+          | 'RAZORPAY'
+          | 'PADDLE'
+          | null,
         paymentTransactionId: session.sessionId,
       },
     });
@@ -88,18 +143,138 @@ export class PaymentsService {
     return session;
   }
 
-  async handleWebhook(headers: Record<string, string>, body: string) {
-    const event = this.provider.parseWebhook(headers, body);
+  /**
+   * Per-provider webhook handler. URL segment is the source of truth —
+   * only that provider's parser is invoked, and we fail closed when the
+   * provider has no configured signing secret. This eliminates the
+   * fall-through where a missing secret on one provider let an attacker
+   * forge a webhook that another provider's loose parser would accept.
+   */
+  async handleProviderWebhook(
+    name: ProviderName,
+    headers: Record<string, string>,
+    body: string,
+  ) {
+    const provider = this.providers[name];
+    if (!provider) {
+      throw new BadRequestException('Unknown provider');
+    }
+
+    /* Fail-closed secret check. mock is dev-only and gated by
+       NODE_ENV at the controller layer, so we permit it here. */
+    if (!this.providerHasSecret(name)) {
+      this.logger.error(
+        `Webhook for ${name} rejected — provider not configured (missing secret).`,
+      );
+      throw new BadRequestException('Provider not configured');
+    }
+
+    const event = provider.parseWebhook(headers, body);
     if (!event) {
+      this.logger.warn(`Invalid webhook for ${name}`);
+      throw new BadRequestException('Invalid webhook');
+    }
+
+    return this.dispatchEvent(provider, event);
+  }
+
+  /**
+   * Legacy multi-provider webhook entry. Kept behind a feature flag for
+   * back-compat with provider dashboards still hitting /payments/webhook;
+   * new integrations MUST use /payments/webhook/:provider.
+   */
+  async handleWebhook(headers: Record<string, string>, body: string) {
+    const order: ProviderName[] = [
+      'stripe',
+      'razorpay',
+      'paypal',
+      'paddle',
+      'mock',
+    ];
+
+    let event: WebhookEvent | null = null;
+    let matched: PaymentProvider | null = null;
+    for (const name of order) {
+      if (!this.providerHasSecret(name)) continue;
+      const provider = this.providers[name];
+      const parsed = provider.parseWebhook(headers, body);
+      if (parsed) {
+        event = parsed;
+        matched = provider;
+        break;
+      }
+    }
+
+    if (!event || !matched) {
       this.logger.warn('Invalid webhook received');
       throw new BadRequestException('Invalid webhook');
     }
 
-    this.logger.log(`Webhook received: ${event.type} (${event.externalId})`);
+    return this.dispatchEvent(matched, event);
+  }
+
+  private providerHasSecret(name: ProviderName): boolean {
+    switch (name) {
+      case 'stripe':
+        return !!this.config.get<string>('STRIPE_WEBHOOK_SECRET');
+      case 'razorpay':
+        return !!this.config.get<string>('RAZORPAY_WEBHOOK_SECRET');
+      case 'paypal':
+        return !!this.config.get<string>('PAYPAL_WEBHOOK_ID');
+      case 'paddle':
+        return !!this.config.get<string>('PADDLE_WEBHOOK_SECRET');
+      case 'mock':
+        /* Mock is dev-only — its webhook handler is reachable from the
+           controller's /webhook/:provider route which itself runs only
+           outside production. No real-world signing exists. */
+        return process.env.NODE_ENV !== 'production';
+    }
+  }
+
+  /**
+   * Idempotency gate + event router. Inserts a WebhookEvent row keyed on
+   * (provider, externalId); a duplicate hit returns the prior outcome
+   * unchanged so a replayed refund or failure never re-mutates state.
+   */
+  private async dispatchEvent(
+    provider: PaymentProvider,
+    event: WebhookEvent,
+  ) {
+    this.logger.log(
+      `Webhook received from ${provider.name}: ${event.type} (${event.externalId})`,
+    );
+
+    if (event.externalId) {
+      try {
+        await this.prisma.webhookEvent.create({
+          data: {
+            provider: provider.name,
+            externalId: event.externalId,
+            type: event.type,
+          },
+        });
+      } catch (err) {
+        /* P2002 on the (provider, externalId) unique index means we've
+           already processed this event — return idempotent ack instead
+           of re-running the handler. */
+        if (
+          err &&
+          typeof err === 'object' &&
+          'code' in err &&
+          (err as { code?: string }).code === 'P2002'
+        ) {
+          this.logger.log(
+            `Webhook idempotent skip (already processed): ${provider.name}/${event.externalId}`,
+          );
+          return { success: true, idempotent: true };
+        }
+        throw err;
+      }
+    }
 
     switch (event.type) {
       case 'checkout.completed':
-        return this.processCheckoutCompleted(event);
+        return this.processCheckoutCompleted(event, provider);
       case 'payment.failed':
         return this.processPaymentFailed(event);
       case 'refund.completed':
@@ -110,11 +285,16 @@ export class PaymentsService {
     }
   }
 
-  private async processCheckoutCompleted(event: WebhookEvent) {
-    const orderId = event.metadata.order_id;
+  private async processCheckoutCompleted(
+    event: WebhookEvent,
+    provider: PaymentProvider,
+  ) {
+    /* New providers (Stripe/PayPal/Razorpay) emit `orderId`, while the
+       legacy Paddle path uses `order_id`. Accept either. */
+    const orderId = event.metadata.orderId ?? event.metadata.order_id;
     if (!orderId) {
-      this.logger.error('Webhook missing order_id in metadata');
-      return { success: false, error: 'Missing order_id' };
+      this.logger.error('Webhook missing orderId in metadata');
+      return { success: false, error: 'Missing orderId' };
     }
 
     const order = await this.prisma.order.findUnique({
@@ -142,6 +322,17 @@ export class PaymentsService {
       Date.now() + ESCROW_HOLD_DAYS * 24 * 60 * 60 * 1000,
     );
 
+    /* Pull tax surfaced by the provider (Stripe Tax / Paddle / Razorpay
+       GST) and persist on the order. taxAmount stays 0 when the provider
+       doesn't expose tax so existing receipts stay numerically correct. */
+    const taxAmount =
+      typeof event.taxAmount === 'number' && event.taxAmount > 0
+        ? event.taxAmount
+        : 0;
+    const taxBreakdown = event.taxBreakdown
+      ? (event.taxBreakdown as unknown as Prisma.InputJsonValue)
+      : Prisma.JsonNull;
+
     await this.prisma.$transaction(async (tx) => {
       await tx.order.update({
         where: { id: orderId },
@@ -152,6 +343,8 @@ export class PaymentsService {
           paymentTransactionId: event.externalId,
           paymentMetadata: event.rawPayload as Prisma.InputJsonValue,
           autoReleaseAt,
+          taxAmount,
+          taxBreakdown,
         },
       });
 
@@ -213,7 +406,7 @@ export class PaymentsService {
             description: `Payment for order ${order.orderNumber}`,
             metadata: {
               externalId: event.externalId,
-              provider: this.provider.name,
+              provider: provider.name,
             },
           },
         });
@@ -277,7 +470,7 @@ export class PaymentsService {
   }
 
   private async processPaymentFailed(event: WebhookEvent) {
-    const orderId = event.metadata.order_id;
+    const orderId = event.metadata.orderId ?? event.metadata.order_id;
     if (!orderId) return { success: false };
 
     const order = await this.prisma.order.findUnique({
@@ -287,20 +480,63 @@ export class PaymentsService {
       return { success: true, idempotent: true };
     }
 
-    await this.prisma.order.update({
-      where: { id: orderId },
-      data: {
-        status: 'CANCELLED',
-        cancelledAt: new Date(),
-        cancellationReason: 'Payment failed',
-      },
+    /* Refund any pre-paid credits atomically with the cancel so the
+       buyer is never left with applied-but-spent points/coins. Order
+       transitions to CANCELLED only after both refunds settle. */
+    await this.prisma.$transaction(async (tx) => {
+      await this.loyalty.refundOnCancel(tx, orderId);
+      /* Wallet refund — uses the same tx so a failure rolls back the
+         loyalty restore too. */
+      const fresh = await tx.order.findUnique({
+        where: { id: orderId },
+        select: {
+          buyerId: true,
+          walletApplied: true,
+          currency: true,
+          orderNumber: true,
+        },
+      });
+      if (fresh && fresh.walletApplied > 0) {
+        const buyer = await tx.user.findUnique({
+          where: { id: fresh.buyerId },
+          select: { buyerWallet: true },
+        });
+        if (buyer) {
+          const newBalance = buyer.buyerWallet + fresh.walletApplied;
+          await tx.user.update({
+            where: { id: fresh.buyerId },
+            data: { buyerWallet: { increment: fresh.walletApplied } },
+          });
+          await tx.walletTransaction.create({
+            data: {
+              userId: fresh.buyerId,
+              type: 'REFUND',
+              amount: fresh.walletApplied,
+              currency: fresh.currency,
+              orderId,
+              balanceBefore: buyer.buyerWallet,
+              balanceAfter: newBalance,
+              description: `Refund of wallet credit on cancelled order ${fresh.orderNumber}`,
+            },
+          });
+        }
+      }
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: 'CANCELLED',
+          cancelledAt: new Date(),
+          cancellationReason: 'Payment failed',
+          walletApplied: 0,
+        },
+      });
     });
 
     return { success: true };
   }
 
   private async processRefundCompleted(event: WebhookEvent) {
-    const orderId = event.metadata.order_id;
+    const orderId = event.metadata.orderId ?? event.metadata.order_id;
     if (!orderId) return { success: false };
 
     await this.prisma.order.update({
@@ -317,45 +553,67 @@ export class PaymentsService {
   }
 
   /**
-   * Public refund hook for the admin module. Delegates to the active
-   * provider (Paddle in prod, Mock in dev). Caller is responsible for
-   * updating Order/escrow state — this method only triggers the provider
-   * call and returns the refundId.
+   * Public refund hook for the admin module. Routes to the same provider
+   * that processed the original checkout, falling back to mock when
+   * called without a currency hint. Caller is responsible for updating
+   * Order/escrow state — this method only triggers the provider call.
    */
   async processRefund(opts: {
     transactionId: string;
     amount?: number;
     reason: string;
+    currency?: string;
   }): Promise<{ success: boolean; refundId: string }> {
-    return this.provider.refund(opts);
+    const provider = opts.currency
+      ? this.resolveProvider(opts.currency)
+      : this.providers.mock;
+    return provider.refund(opts);
   }
 
   /**
-   * Mock-only: simulate a successful checkout webhook locally.
+   * Mock-only: simulate a successful checkout webhook locally. Available
+   * whenever the resolved provider for USD is the mock fallback (i.e.
+   * STRIPE_SECRET_KEY is unset). The buyerId of the order MUST match
+   * the caller — without this check anyone could mark someone else's
+   * order PAID by guessing the orderId.
    */
-  async simulateMockPayment(sessionId: string, orderId: string) {
-    if (this.provider.name !== 'mock') {
-      throw new BadRequestException('Only available with mock provider');
+  async simulateMockPayment(
+    sessionId: string,
+    orderId: string,
+    callerId: string,
+  ) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new NotFoundException();
     }
 
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
     });
     if (!order) throw new NotFoundException();
+    if (order.buyerId !== callerId) {
+      throw new BadRequestException('Not your order');
+    }
+
+    const provider = this.resolveProvider(order.currency);
+    if (provider.name !== 'mock') {
+      throw new BadRequestException('Only available with mock provider');
+    }
 
     const fakeEvent: WebhookEvent = {
       type: 'checkout.completed',
       externalId: sessionId,
       amount: Math.round(order.buyerTotal * 100),
       currency: order.currency,
-      metadata: { order_id: orderId },
+      metadata: { orderId },
       rawPayload: { simulated: true, sessionId },
     };
 
-    return this.processCheckoutCompleted(fakeEvent);
+    return this.processCheckoutCompleted(fakeEvent, provider);
   }
 
   getProviderName(): string {
-    return this.provider.name;
+    /* Best-effort label for status pages. Returns the USD-default
+       provider name (stripe when configured, else mock). */
+    return this.resolveProvider('USD').name;
   }
 }

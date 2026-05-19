@@ -329,7 +329,7 @@ export function CustomRequestModal({ open, onClose, gameSlug, tabType, prefillTi
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={img.url}
-                        alt=""
+                        alt="Reference attached to your request"
                         className={`w-full h-full object-cover ${img.uploading ? 'opacity-50' : ''}`}
                       />
                       {img.uploading && (

@@ -130,20 +130,57 @@ export default function TermsPage() {
               </p>
             </Section>
 
-            <Section title="11. Contact">
+            <Section title="11. Restricted regions">
+              <p>
+                GETX is not available to users located in any country
+                subject to comprehensive sanctions by the United States
+                (Cuba, Iran, North Korea, Syria), nor in Russia, Belarus,
+                Myanmar, Afghanistan, South Sudan, or Yemen. Signups from
+                these regions are blocked. If you believe your country was
+                added in error, contact{' '}
+                <a
+                  href="mailto:support@getx.live?subject=Legal%20enquiry"
+                  className="text-primary hover:underline"
+                >
+                  support@getx.live
+                </a>
+                .
+              </p>
+            </Section>
+
+            <Section title="12. Governing law + dispute resolution">
+              <p>
+                These Terms are governed by the laws of England and Wales.
+                Disputes that cannot be resolved through the GETX dispute
+                centre go to binding arbitration in London under the LCIA
+                rules, except where mandatory consumer-protection law in
+                your country of residence grants you a different forum
+                (e.g. your local small-claims court in EU member states).
+              </p>
+            </Section>
+
+            <Section title="13. Contact">
               <p>
                 Questions about these Terms? See the{' '}
                 <Link href="/contact" className="text-primary hover:underline">
                   contact page
-                </Link>
+                </Link>{' '}
+                or email{' '}
+                <a
+                  href="mailto:support@getx.live?subject=Legal%20enquiry"
+                  className="text-primary hover:underline"
+                >
+                  support@getx.live
+                </a>
                 .
               </p>
             </Section>
           </div>
 
           <p className="text-xs text-muted-foreground mt-12 not-prose">
-            These Terms are a starting point and may be replaced with jurisdiction-specific legal
-            language as the platform expands. Nothing here is legal advice.
+            Last updated 2026-05-16. We&apos;ll notify you at least 14 days
+            before any material change takes effect. Nothing in these Terms
+            is legal advice.
           </p>
         </article>
       </main>

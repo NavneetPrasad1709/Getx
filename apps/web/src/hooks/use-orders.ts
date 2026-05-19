@@ -35,6 +35,14 @@ export interface OrderUserMini {
   email?: string;
   sellerRating?: number;
   verifiedTier?: string | null;
+  rank?:
+    | 'ROOKIE'
+    | 'RISING'
+    | 'TRUSTED'
+    | 'PRO'
+    | 'ELITE'
+    | 'LEGEND'
+    | null;
 }
 
 export interface OrderListItem {
@@ -45,6 +53,16 @@ export interface OrderListItem {
   amount: number;
   buyerFee: number;
   buyerTotal: number;
+  /* Buyer-wallet credit applied to this order (debited at apply, refunded on
+     cancel). Razorpay charges (buyerTotal - walletApplied). */
+  walletApplied?: number;
+  /* Loyalty points + USD value redeemed at checkout. Cannot co-exist with
+     walletApplied — server enforces the mutex. */
+  loyaltyPointsApplied?: number;
+  loyaltyUsdApplied?: number;
+  /* Provider-collected sales tax/VAT/GST. Stripe Tax populates this from
+     the buyer's billing address; 0 when no jurisdiction tax applies. */
+  taxAmount?: number;
   sellerCommission: number;
   sellerAmount: number;
   currency: string;
@@ -60,6 +78,17 @@ export interface OrderListItem {
   customRequest?: { requestNumber: string; title: string } | null;
 }
 
+export interface DisputeSummary {
+  id: string;
+  disputeNumber: string;
+  reason: string;
+  status: 'OPEN' | 'REVIEWING' | 'AWAITING_RESPONSE' | 'RESOLVED' | 'ESCALATED' | 'CLOSED';
+  priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+  resolution: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
 export interface OrderDetail extends OrderListItem {
   buyer: OrderUserMini;
   seller: OrderUserMini;
@@ -69,6 +98,8 @@ export interface OrderDetail extends OrderListItem {
     sku: string;
     title: string;
     images: string[];
+    status?: string;
+    deletedAt?: string | null;
   } | null;
   customRequest?: {
     id: string;
@@ -80,6 +111,7 @@ export interface OrderDetail extends OrderListItem {
   paymentTransactionId?: string | null;
   paymentProvider?: string | null;
   autoReleaseAt?: string | null;
+  disputes?: DisputeSummary[];
 }
 
 export interface CheckoutSessionResponse {
@@ -116,7 +148,11 @@ export function useOrder(id: string) {
 
 export function useCreateOrderFromListing() {
   const qc = useQueryClient();
-  return useMutation<OrderDetail, Error, { listingId: string; quantity?: number }>({
+  return useMutation<
+    OrderDetail,
+    Error,
+    { listingId: string; quantity?: number; variantId?: string }
+  >({
     mutationFn: async (payload) => {
       const { data } = await api.post<OrderDetail>('/orders/from-listing', payload);
       return data;
@@ -136,6 +172,19 @@ export function useCreateOrderFromOffer() {
       qc.invalidateQueries({ queryKey: ['orders'] });
       qc.invalidateQueries({ queryKey: ['custom-requests'] });
     },
+  });
+}
+
+export function useReorder() {
+  const qc = useQueryClient();
+  return useMutation<{ orderId: string }, Error, string>({
+    mutationFn: async (orderId) => {
+      const { data } = await api.post<{ orderId: string }>(
+        `/orders/${orderId}/reorder`,
+      );
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['orders'] }),
   });
 }
 

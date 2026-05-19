@@ -71,6 +71,7 @@ export class AuthController {
 
   @Public()
   @Post('refresh')
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
   async refresh(
     @Req() req: Request,
@@ -105,6 +106,7 @@ export class AuthController {
 
   @Public()
   @Post('reset-password')
+  @Throttle({ default: { limit: 5, ttl: 3600000 } })
   @HttpCode(HttpStatus.OK)
   async resetPassword(@Body() body: unknown, @Req() req: Request) {
     const dto = ResetPasswordSchema.parse(body);

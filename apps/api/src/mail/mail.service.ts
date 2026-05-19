@@ -11,7 +11,7 @@ export class MailService {
   constructor(private config: ConfigService) {
     const apiKey = config.get<string>('RESEND_API_KEY');
     this.from =
-      config.get<string>('RESEND_FROM_EMAIL') || 'GETX <noreply@getx.gg>';
+      config.get<string>('RESEND_FROM_EMAIL') || 'GETX <noreply@getx.live>';
 
     if (apiKey && apiKey.startsWith('re_')) {
       this.resend = new Resend(apiKey);
@@ -35,7 +35,7 @@ export class MailService {
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#fafbfc;font-family:Arial,sans-serif;">
+<body style="margin:0;padding:0;background:#fafbfc;font-family:Poppins,Arial,sans-serif;">
   <div style="max-width:600px;margin:40px auto;background:white;border-radius:12px;padding:40px;">
     <h1 style="color:#2563eb;margin:0 0 16px;font-size:32px;">Welcome, ${safeName}!</h1>
     <p style="color:#475569;font-size:16px;line-height:1.5;margin:0 0 24px;">Your GETX verification code:</p>
@@ -63,7 +63,7 @@ export class MailService {
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#fafbfc;font-family:Arial,sans-serif;">
+<body style="margin:0;padding:0;background:#fafbfc;font-family:Poppins,Arial,sans-serif;">
   <div style="max-width:600px;margin:40px auto;background:white;border-radius:12px;padding:40px;">
     <h1 style="color:#2563eb;margin:0 0 16px;font-size:32px;">You're in, ${safeName}!</h1>
     <p style="color:#475569;font-size:16px;line-height:1.5;">Your GETX account is verified and ready.</p>
@@ -97,7 +97,7 @@ export class MailService {
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#fafbfc;font-family:Arial,sans-serif;">
+<body style="margin:0;padding:0;background:#fafbfc;font-family:Poppins,Arial,sans-serif;">
   <div style="max-width:600px;margin:40px auto;background:white;border-radius:12px;padding:40px;">
     <h1 style="color:#2563eb;margin:0 0 16px;font-size:28px;">Hi ${safeName},</h1>
     <p style="color:#475569;font-size:16px;line-height:1.5;">Click below to reset your GETX password:</p>
@@ -139,7 +139,7 @@ export class MailService {
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#fafbfc;font-family:Arial,sans-serif;">
+<body style="margin:0;padding:0;background:#fafbfc;font-family:Poppins,Arial,sans-serif;">
   <div style="max-width:600px;margin:40px auto;background:white;border-radius:12px;padding:40px;">
     <h1 style="color:#2563eb;margin:0 0 16px;font-size:24px;">${safeTitle}</h1>
     ${safeBody ? `<p style="color:#475569;font-size:15px;line-height:1.6;margin:0 0 24px;">${safeBody}</p>` : ''}
@@ -161,6 +161,116 @@ export class MailService {
       html,
       `${params.title}\n${params.body ?? ''}`,
     );
+  }
+
+  /* Saved-search match alert — sent by the cron when ≥1 new match (newly
+     created listing or price-dropped listing) appears since the user's
+     last notification. Footer carries a one-click unsubscribe link
+     wired to the user's unsubscribe token. */
+  async sendSavedSearchAlert(params: {
+    to: string;
+    userName: string | null;
+    savedSearchName: string;
+    matches: Array<{
+      id: string;
+      title: string;
+      price: number;
+      currency: string;
+      slug: string | null;
+      images: string[];
+      tabType: string;
+      game: { slug: string };
+    }>;
+    totalMatches: number;
+    viewAllUrl: string;
+    unsubscribeUrl: string;
+  }): Promise<void> {
+    const count = params.totalMatches;
+    const subject =
+      count === 1
+        ? `New match for "${truncate(params.savedSearchName, 40)}"`
+        : `${count} new matches for "${truncate(params.savedSearchName, 40)}"`;
+
+    const safeName = this.escapeHtml(params.userName ?? 'there');
+    const safeSearch = this.escapeHtml(params.savedSearchName);
+    const safeViewAll = this.escapeHtml(params.viewAllUrl);
+    const safeUnsub = this.escapeHtml(params.unsubscribeUrl);
+
+    const cards = params.matches
+      .slice(0, 3)
+      .map((m) => {
+        const cover = m.images?.[0]
+          ? this.escapeHtml(m.images[0])
+          : '';
+        const seg =
+          m.tabType === 'TOP_UPS'
+            ? 'top-ups'
+            : m.tabType === 'ITEMS'
+              ? 'items'
+              : 'accounts';
+        const href = this.escapeHtml(
+          `${stripQuery(params.viewAllUrl)}/${m.slug ?? m.id}`,
+        );
+        const overrideHref = this.escapeHtml(
+          `${trimTrailingSlash(stripQuery(params.viewAllUrl).replace(/\/[^/]+$/, ''))}/${seg}/${m.slug ?? m.id}`,
+        );
+        const finalHref = overrideHref;
+        const priceLine = formatMoney(m.price, m.currency);
+        return `
+          <td style="width:33%;padding:0 6px;vertical-align:top;">
+            <a href="${finalHref}" style="display:block;text-decoration:none;color:#0f172a;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#fff;">
+              ${
+                cover
+                  ? `<img src="${cover}" alt="" width="100%" style="display:block;width:100%;height:120px;object-fit:cover;background:#f1f5f9;">`
+                  : `<div style="height:120px;background:linear-gradient(135deg,#dbeafe,#bfdbfe);"></div>`
+              }
+              <div style="padding:10px 12px 12px;">
+                <div style="font-size:13px;line-height:1.35;color:#0f172a;font-weight:600;height:36px;overflow:hidden;">${this.escapeHtml(m.title)}</div>
+                <div style="font-size:16px;color:#2563eb;font-weight:700;margin-top:6px;">${this.escapeHtml(priceLine)}</div>
+              </div>
+            </a>
+          </td>
+        `;
+      })
+      .join('');
+
+    const extra =
+      count > 3
+        ? `<p style="color:#475569;font-size:13px;margin:18px 0 0;text-align:center;">+ ${count - 3} more match${count - 3 === 1 ? '' : 'es'}</p>`
+        : '';
+
+    const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#fafbfc;font-family:Poppins,Arial,sans-serif;">
+  <div style="max-width:600px;margin:40px auto;background:white;border-radius:12px;padding:32px;">
+    <p style="color:#475569;font-size:14px;margin:0 0 4px;">Hi ${safeName},</p>
+    <h1 style="color:#0f172a;margin:0 0 6px;font-size:22px;line-height:1.25;">${count === 1 ? 'A new match just landed' : `${count} fresh matches for you`}</h1>
+    <p style="color:#64748b;font-size:14px;margin:0 0 24px;">From your saved search · <strong style="color:#0f172a;">${safeSearch}</strong></p>
+
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="border-collapse:separate;border-spacing:0;">
+      <tr>${cards}</tr>
+    </table>
+
+    ${extra}
+
+    <div style="text-align:center;margin:28px 0 8px;">
+      <a href="${safeViewAll}" style="display:inline-block;background:#2563eb;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">View all matches</a>
+    </div>
+
+    <hr style="margin:32px 0 16px;border:none;border-top:1px solid #e5e7eb;">
+    <p style="color:#94a3b8;font-size:11px;margin:0;text-align:center;line-height:1.5;">
+      GETX — Get X. Get gaming.<br>
+      You're receiving this because you saved a search on GETX.<br>
+      <a href="${safeUnsub}" style="color:#94a3b8;text-decoration:underline;">Unsubscribe from alerts</a>
+    </p>
+  </div>
+</body>
+</html>`;
+
+    const text = `${count} new matches for your saved search "${params.savedSearchName}".\nView all: ${params.viewAllUrl}\nUnsubscribe: ${params.unsubscribeUrl}`;
+    await this.send(params.to, subject, html, text);
   }
 
   private async send(
@@ -196,4 +306,34 @@ export class MailService {
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;');
   }
+}
+
+function truncate(s: string, n: number): string {
+  return s.length <= n ? s : `${s.slice(0, n - 1).trim()}…`;
+}
+
+/* Mirrors apps/web/src/lib/currency.formatMoney — USD-default, locale
+   resolved per currency (en-IN for INR; en-US for everything else).
+   Kept inline so the email service has zero non-Nest deps. */
+function formatMoney(amount: number, currency: string): string {
+  const code = (currency || 'USD').toUpperCase();
+  const zeroDec = ['JPY', 'KRW', 'INR'].includes(code);
+  try {
+    return new Intl.NumberFormat(code === 'INR' ? 'en-IN' : 'en-US', {
+      style: 'currency',
+      currency: code,
+      maximumFractionDigits: zeroDec ? 0 : 2,
+    }).format(amount);
+  } catch {
+    return `${code} ${amount.toFixed(zeroDec ? 0 : 2)}`;
+  }
+}
+
+function stripQuery(url: string): string {
+  const i = url.indexOf('?');
+  return i === -1 ? url : url.slice(0, i);
+}
+
+function trimTrailingSlash(url: string): string {
+  return url.endsWith('/') ? url.slice(0, -1) : url;
 }
