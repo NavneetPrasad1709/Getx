@@ -6,7 +6,7 @@
       "src": "apps/web/package.json",
       "use": "@vercel/next",
       "config": {
-        "installCommand": "corepack enable && cd ../.. && pnpm install --frozen-lockfile && pnpm --filter @getx/database db:generate",
+        "installCommand": "corepack enable && corepack prepare pnpm@11.0.8 --activate && cd ../.. && pnpm install --frozen-lockfile && pnpm --filter @getx/database db:generate",
         "buildCommand": "next build"
       }
     }
