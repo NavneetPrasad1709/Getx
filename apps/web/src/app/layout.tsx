@@ -1,17 +1,9 @@
 import type { Metadata } from 'next';
-import dynamic from 'next/dynamic';
 import { Poppins, JetBrains_Mono } from 'next/font/google';
 import { ThemeProvider, Toaster, PageTransition, TooltipProvider } from '@getx/ui';
-
-/* CustomCursor is desktop-pointer-only eye candy. Load it client-side
-   only, skip SSR (saves hydration weight), and let the component
-   short-circuit on touch devices via its own media-query gate. */
-const CustomCursor = dynamic(
-  () => import('@getx/ui').then((m) => m.CustomCursor),
-  { ssr: false },
-);
 import { AuthProvider } from '@/hooks/use-auth';
 import { QueryProvider } from '@/components/query-provider';
+import { CustomCursorLoader } from '@/components/custom-cursor-loader';
 import './globals.css';
 
 /* next/font self-hosts the WOFF2 files at build, drops the render-
@@ -75,7 +67,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               </AuthProvider>
             </QueryProvider>
             <Toaster />
-            <CustomCursor />
+            <CustomCursorLoader />
           </TooltipProvider>
         </ThemeProvider>
       </body>
