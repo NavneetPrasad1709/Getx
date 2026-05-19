@@ -1,8 +1,14 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "nextjs",
-  "installCommand": "corepack enable && pnpm install --frozen-lockfile && pnpm --filter @getx/database db:generate",
-  "buildCommand": "pnpm --filter @getx/web build",
-  "outputDirectory": "apps/web/.next",
-  "regions": ["bom1"]
+  "version": 2,
+  "builds": [
+    {
+      "src": "apps/web/package.json",
+      "use": "@vercel/next",
+      "config": {
+        "installCommand": "corepack enable && cd ../.. && pnpm install --frozen-lockfile && pnpm --filter @getx/database db:generate",
+        "buildCommand": "next build"
+      }
+    }
+  ]
 }
