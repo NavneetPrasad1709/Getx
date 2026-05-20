@@ -27,7 +27,7 @@ RUN pnpm --filter @getx/api build
 # `pnpm deploy` flattens transitive deps (express via @nestjs/platform-express,
 # etc.) into a self-contained /deploy directory so the prod image doesn't
 # have to ship the entire pnpm store + workspace symlinks.
-RUN pnpm --filter @getx/api --prod deploy /deploy
+RUN pnpm --filter @getx/api --prod --legacy deploy /deploy
 
 FROM base AS prod
 WORKDIR /app
