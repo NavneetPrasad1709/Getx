@@ -3,6 +3,8 @@ FROM node:24-bookworm-slim AS base
 RUN apt-get update -y && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN npm install -g pnpm@10.15.0
 
+# Install ALL workspace deps (including transitive) so the build stage
+# can compile @getx/api and its workspace siblings.
 FROM base AS deps
 WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
@@ -17,17 +19,19 @@ RUN pnpm install --frozen-lockfile --ignore-scripts
 FROM base AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules
 COPY . .
 RUN pnpm --filter @getx/database db:generate
 RUN pnpm --filter @getx/api build
+# `pnpm deploy` flattens transitive deps (express via @nestjs/platform-express,
+# etc.) into a self-contained /deploy directory so the prod image doesn't
+# have to ship the entire pnpm store + workspace symlinks.
+RUN pnpm --filter @getx/api --prod deploy /deploy
 
 FROM base AS prod
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/apps/api ./apps/api
-COPY --from=build /app/packages ./packages
-COPY --from=build /app/package.json ./
-COPY --from=build /app/pnpm-workspace.yaml ./
+COPY --from=build /deploy ./
 EXPOSE 4000
-CMD ["node", "apps/api/dist/main"]
+CMD ["node", "dist/main"]
