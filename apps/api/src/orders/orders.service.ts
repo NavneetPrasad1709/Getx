@@ -650,11 +650,19 @@ export class OrdersService {
    * still in HELD escrow.
    */
   async releaseExpiredEscrow() {
+    // An order with an open dispute must never auto-release, even when the
+    // escrow timer has elapsed and order.status is still DELIVERED/PAID —
+    // disputes don't mutate order.status, only the Dispute row.
     const expired = await this.prisma.order.findMany({
       where: {
         escrowStatus: 'HELD',
         autoReleaseAt: { lt: new Date() },
         status: { in: ['DELIVERED', 'PAID', 'IN_PROGRESS'] },
+        disputes: {
+          none: {
+            status: { in: ['OPEN', 'REVIEWING', 'AWAITING_RESPONSE', 'ESCALATED'] },
+          },
+        },
       },
       select: { id: true, orderNumber: true },
     });

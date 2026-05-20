@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RankService } from '../rank/rank.service';
 import { ApplyWalletDto, WithdrawDto } from './dto/wallet.dto';
+import { encryptPii } from '../common/pii-crypto';
 
 /* WalletService — buyer-side GETX Coins ledger.
 
@@ -331,16 +332,15 @@ export class WalletService {
           case 'WISE':
             return { wiseEmail: dto.wiseEmail };
           case 'BANK_TRANSFER_INTL':
-            /* IBAN/BIC/holder are encrypted at rest in v2. For now store
-               as a JSON blob in bankAccountEncrypted; admin sees raw
-               in the queue. */
             return {
-              bankAccountEncrypted: JSON.stringify({
-                holderName: dto.holderName,
-                iban: dto.iban,
-                bic: dto.bic,
-                bankName: dto.bankName,
-              }),
+              bankAccountEncrypted: encryptPii(
+                JSON.stringify({
+                  holderName: dto.holderName,
+                  iban: dto.iban,
+                  bic: dto.bic,
+                  bankName: dto.bankName,
+                }),
+              ),
             };
         }
       })();

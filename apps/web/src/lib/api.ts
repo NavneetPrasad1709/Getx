@@ -1,6 +1,14 @@
 import axios, { AxiosError, type AxiosRequestConfig } from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL;
+if (!RAW_API_URL && process.env.NODE_ENV === 'production') {
+  throw new Error(
+    'NEXT_PUBLIC_API_URL must be defined at build time in production. ' +
+      'Set it in the Vercel project env so the client does not silently fall ' +
+      'back to localhost:4000.',
+  );
+}
+const API_URL = RAW_API_URL || 'http://localhost:4000/api/v1';
 
 export const api = axios.create({
   baseURL: API_URL,

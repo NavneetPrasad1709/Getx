@@ -22,9 +22,11 @@ async function bootstrap() {
       'DATABASE_URL',
       'JWT_ACCESS_SECRET',
       'JWT_REFRESH_SECRET',
+      'PII_ENCRYPTION_KEY',
       'WEB_URL',
       'SELLER_URL',
       'ADMIN_URL',
+      'COOKIE_DOMAIN',
     ];
     const missing = required.filter((key) => !process.env[key]);
     if (missing.length > 0) {

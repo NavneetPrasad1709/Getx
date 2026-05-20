@@ -75,11 +75,22 @@ export class PaymentsService {
    */
   private resolveProvider(currency: string): PaymentProvider {
     const upper = currency.toUpperCase();
+    const isProd = process.env.NODE_ENV === 'production';
     if (upper === 'INR') {
       const hasKey = !!this.config.get<string>('RAZORPAY_KEY_ID');
+      if (!hasKey && isProd) {
+        throw new Error(
+          'RAZORPAY_KEY_ID missing in production — refusing to route INR checkout through the mock provider.',
+        );
+      }
       return hasKey ? this.providers.razorpay : this.providers.mock;
     }
     const hasStripe = !!this.config.get<string>('STRIPE_SECRET_KEY');
+    if (!hasStripe && isProd) {
+      throw new Error(
+        'STRIPE_SECRET_KEY missing in production — refusing to route non-INR checkout through the mock provider.',
+      );
+    }
     return hasStripe ? this.providers.stripe : this.providers.mock;
   }
 
@@ -538,6 +549,17 @@ export class PaymentsService {
   private async processRefundCompleted(event: WebhookEvent) {
     const orderId = event.metadata.orderId ?? event.metadata.order_id;
     if (!orderId) return { success: false };
+
+    // Idempotency: webhooks can be redelivered. Treat a replay as a no-op
+    // instead of overwriting refundTransactionId / refundedAt, which would
+    // break reconciliation if the second event carries a different id.
+    const existing = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { status: true },
+    });
+    if (existing?.status === 'REFUNDED') {
+      return { success: true, idempotent: true };
+    }
 
     await this.prisma.order.update({
       where: { id: orderId },
