@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
-FROM node:24-alpine AS base
-RUN corepack enable && corepack prepare pnpm@11.0.8 --activate
-RUN apk add --no-cache openssl
+FROM node:24-bookworm-slim AS base
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN npm install -g pnpm@10.15.0
 
 FROM base AS deps
 WORKDIR /app
