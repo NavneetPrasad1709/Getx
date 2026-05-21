@@ -7,6 +7,7 @@ import cookieParser from 'cookie-parser';
 import { json } from 'express';
 import type { Request } from 'express';
 import { AppModule } from './app.module';
+import { AllExceptionsFilter } from './common/all-exceptions.filter';
 import { ZodExceptionFilter } from './common/zod-exception.filter';
 
 interface RawBodyRequest extends Request {
@@ -79,15 +80,24 @@ async function bootstrap() {
   // Validation handled per-route by Zod (RegisterSchema.parse, etc.) —
   // skipping the global class-validator ValidationPipe avoids that dep.
   // ZodError -> 400 with field-level issues (otherwise Nest treats it as 500).
-  app.useGlobalFilters(new ZodExceptionFilter());
+  // AllExceptionsFilter is the catch-all that logs every 5xx as a single
+  // structured-JSON line so Railway/Vercel log shippers can index it.
+  // Order matters: NestJS iterates filters reverse-registration order,
+  // so list the catch-all FIRST and the more specific ZodErrorFilter LAST.
+  app.useGlobalFilters(new AllExceptionsFilter(), new ZodExceptionFilter());
 
   app.setGlobalPrefix('api/v1');
 
   const port = Number(process.env.PORT ?? 4000);
-  await app.listen(port);
+  /* Bind to 0.0.0.0 so the platform edge (Railway, Render, Fly) can reach
+     the container. Node's default `::` would normally work, but some
+     container runtimes only forward IPv4, and the silent failure shows up
+     as a healthcheck timeout that's hard to diagnose. */
+  const host = process.env.HOST ?? '0.0.0.0';
+  await app.listen(port, host);
 
   Logger.log(
-    `GETX API listening on http://localhost:${port}/api/v1`,
+    `GETX API listening on http://${host}:${port}/api/v1`,
     'Bootstrap',
   );
 }

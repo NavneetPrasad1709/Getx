@@ -36,10 +36,22 @@ RUN pnpm --filter @getx/api build
 # etc.) into a self-contained /deploy directory so the prod image doesn't
 # have to ship the entire pnpm store + workspace symlinks.
 RUN pnpm --filter @getx/api --prod --legacy deploy /deploy
+# Regenerate the Prisma client inside /deploy. `pnpm deploy` builds a fresh
+# node_modules from the pnpm store, which contains only the un-generated
+# @prisma/client stub — the client we produced earlier in this stage lives
+# in /app/node_modules and never makes it to /deploy. Without this step the
+# container starts but crashes the first time `new PrismaClient()` runs,
+# which is the very next line after constructor injection finishes — way
+# before /api/v1/health can answer.
+RUN cd /deploy && /app/node_modules/.bin/prisma generate \
+    --schema=/deploy/node_modules/@getx/database/prisma/schema.prisma
 
 FROM base AS prod
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /deploy ./
 EXPOSE 4000
+# Bind the listener to 0.0.0.0 instead of the platform default so the
+# Railway edge can reach it. main.ts honors $HOST via process.env if set.
+ENV HOST=0.0.0.0
 CMD ["node", "dist/main"]
