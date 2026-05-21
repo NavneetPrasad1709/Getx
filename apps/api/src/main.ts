@@ -71,11 +71,25 @@ async function bootstrap() {
     }),
   );
 
+  /* CORS allowlist supports comma-separated values per env var so a
+     single Vercel project served on multiple domains (preview + custom
+     apex + www subdomain) can all hit the API without redeploying the
+     backend each time a new alias goes up. Empty entries are filtered
+     to tolerate trailing commas. */
+  const parseOrigins = (raw?: string) =>
+    (raw ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
   app.enableCors({
     origin: [
-      config.get<string>('WEB_URL') || 'http://localhost:3000',
-      config.get<string>('SELLER_URL') || 'http://localhost:3001',
-      config.get<string>('ADMIN_URL') || 'http://localhost:3002',
+      ...parseOrigins(config.get<string>('WEB_URL') ?? 'http://localhost:3000'),
+      ...parseOrigins(
+        config.get<string>('SELLER_URL') ?? 'http://localhost:3001',
+      ),
+      ...parseOrigins(
+        config.get<string>('ADMIN_URL') ?? 'http://localhost:3002',
+      ),
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
