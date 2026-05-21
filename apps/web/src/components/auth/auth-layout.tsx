@@ -2,39 +2,28 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { ShieldCheck, Zap, Wallet, Sparkles } from 'lucide-react';
-import { motion, useReducedMotion, GetXLogo } from '@getx/ui';
+import { GetXLogo } from '@getx/ui';
 
-/* AuthLayout — cinematic split-screen.
+/* AuthLayout — 21st.dev SignInPage split.
+   ────────────────────────────────────────────────────────────────────
+   Form left, hero right with floating testimonial cards on desktop.
+   On mobile the hero collapses and the form occupies the full viewport.
+   Each call site supplies its own form body via `children`; the wrapper
+   handles the chrome, heading, footer, and the brand-side imagery.
 
-   The brand-side (left on lg+) plays an ambient looping gameplay video on a
-   noir base. On mobile the video collapses; the auth form occupies the full
-   screen and the brand panel becomes a compact glow strip at the top.
+   Why the change from the previous brand-left/form-right + video layout:
+   the user provided this design explicitly from 21st.dev and asked it to
+   be adopted across the auth surface. Same component API as before
+   (eyebrow / title / subtitle / footer) so the four auth pages
+   (login, register, verify-email, forgot-password, reset-password) work
+   without touching their form bodies. */
 
-   The right-side wraps every form in a generous form well so each input has
-   breathing room — auth converts when the form feels easy, not when it feels
-   crowded. */
-
-const HIGHLIGHTS = [
-  {
-    icon: ShieldCheck,
-    title: 'Escrow on every order',
-    body: 'Money held safe until you confirm delivery. Or 3-day auto-release with zero disputes.',
-  },
-  {
-    icon: Zap,
-    title: 'Sub-10 minute delivery',
-    body: 'Verified sellers respond fast. Avg 6 minutes from purchase to credentials.',
-  },
-  {
-    icon: Wallet,
-    title: 'UPI direct, no platform fee',
-    body: 'Buyers pay zero platform fees. Sellers paid in 24h via PayPal · Wise · UPI · Bank.',
-  },
-];
-
-const HERO_VIDEO_SRC = process.env.NEXT_PUBLIC_HERO_VIDEO_SRC ?? '/hero/hero.mp4';
-const HERO_POSTER_SRC = process.env.NEXT_PUBLIC_HERO_POSTER_SRC ?? '/hero/poster.jpg';
+export type AuthTestimonial = {
+  avatarSrc: string;
+  name: string;
+  handle: string;
+  text: string;
+};
 
 type Props = {
   eyebrow: string;
@@ -42,160 +31,155 @@ type Props = {
   subtitle: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  /* Optional override — defaults to the GETX gaming-marketplace image. */
+  heroImageSrc?: string;
+  testimonials?: AuthTestimonial[];
 };
 
-export function AuthLayout({ eyebrow, title, subtitle, children, footer }: Props) {
-  const reduce = useReducedMotion();
-  const [videoFailed, setVideoFailed] = React.useState(false);
+/* Default hero image — gaming-flavoured. Swap to a GETX brand render
+   once the design team produces one. Unsplash CC0 placeholder for now
+   so the layout never ships with a broken image. */
+const DEFAULT_HERO_SRC =
+  'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=2160&q=80';
 
+const DEFAULT_TESTIMONIALS: AuthTestimonial[] = [
+  {
+    avatarSrc: 'https://randomuser.me/api/portraits/women/57.jpg',
+    name: 'Sarah Chen',
+    handle: '@sarahplays',
+    text:
+      'Bought a Lvl 50 account through GETX escrow — credentials in 6 min, refund on the one I bounced on. Trust on autopilot.',
+  },
+  {
+    avatarSrc: 'https://randomuser.me/api/portraits/men/64.jpg',
+    name: 'Marcus Johnson',
+    handle: '@marcusgg',
+    text:
+      'Cashed out my stockpile in a weekend. Wise payout cleared in 24h. No platform fee on the buy side keeps customers coming back.',
+  },
+  {
+    avatarSrc: 'https://randomuser.me/api/portraits/men/32.jpg',
+    name: 'David Martinez',
+    handle: '@dmrtnz',
+    text:
+      "Disputes get answered by actual humans within an hour. That's the only metric that matters to me when I'm dropping $400 on an account.",
+  },
+];
+
+function TestimonialCard({
+  testimonial,
+  delayClass,
+}: {
+  testimonial: AuthTestimonial;
+  delayClass: string;
+}) {
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row bg-background">
-      {/* BRAND SIDE — ambient video + cinematic frame */}
-      <aside className="relative lg:flex-1 lg:max-w-[640px] overflow-hidden bg-[hsl(222_47%_3%)] text-white">
-        {/* Ambient video bg */}
-        <div aria-hidden className="absolute inset-0 pointer-events-none">
-          {!reduce && !videoFailed && HERO_VIDEO_SRC ? (
-            <video
-              autoPlay
-              loop
-              muted
-              playsInline
-              preload="auto"
-              poster={HERO_POSTER_SRC}
-              onError={() => setVideoFailed(true)}
-              className="absolute inset-0 h-full w-full object-cover opacity-40"
-            >
-              <source src={HERO_VIDEO_SRC} type="video/mp4" />
-            </video>
-          ) : null}
+    <div
+      className={`animate-testimonial ${delayClass} flex items-start gap-3 rounded-3xl border border-white/15 bg-zinc-900/55 p-5 backdrop-blur-xl w-64 text-white shadow-[0_18px_40px_-12px_rgba(0,0,0,0.5)]`}
+    >
+      <img
+        src={testimonial.avatarSrc}
+        className="h-10 w-10 rounded-2xl object-cover"
+        alt=""
+        loading="lazy"
+      />
+      <div className="text-sm leading-snug">
+        <p className="flex items-center gap-1 font-semibold">
+          {testimonial.name}
+        </p>
+        <p className="text-white/60 text-xs">{testimonial.handle}</p>
+        <p className="mt-1 text-white/80">{testimonial.text}</p>
+      </div>
+    </div>
+  );
+}
 
-          {/* Layered noir treatment */}
-          <div className="absolute inset-0 bg-gradient-to-br from-[hsl(222_47%_3%)] via-[hsl(222_47%_3%)]/70 to-[hsl(222_47%_3%)]/95" />
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_50%_at_30%_30%,hsl(195_100%_55%/0.32),transparent_70%)]" />
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_50%_40%_at_75%_70%,hsl(45_100%_60%/0.18),transparent_70%)]" />
-
-          {/* Faint grid */}
-          <div
-            className="absolute inset-0 opacity-[0.04]"
-            style={{
-              backgroundImage:
-                'linear-gradient(rgba(255,255,255,1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,1) 1px, transparent 1px)',
-              backgroundSize: '56px 56px',
-            }}
-          />
-
-          {/* Drifting glow orbs */}
-          <div className="absolute -top-32 -left-20 h-[440px] w-[440px] rounded-full bg-primary/18 blur-[120px] animate-drift-slow mix-blend-screen" />
-          <div className="absolute -bottom-32 right-0 h-[380px] w-[380px] rounded-full bg-primary-glow/15 blur-[120px] animate-drift-slower mix-blend-screen" />
-
-          {/* Cinematic scanline */}
-          <div className="absolute inset-0 hero-scanline opacity-60" />
-
-          {/* Mobile fade-to-form */}
-          <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent_55%,hsl(222_47%_3%))] lg:bg-none" />
-        </div>
-
-        <div className="relative h-full flex flex-col p-6 sm:p-10 lg:p-12 min-h-[320px] lg:min-h-screen">
-          <Link href="/" aria-label="GETX home" className="inline-flex items-center gap-2 self-start">
-            <GetXLogo size="lg" gradient glow={!reduce} className="text-white" />
-          </Link>
-
-          {/* Hero copy — hidden on mobile (form already has its own title) */}
-          <div className="hidden lg:block mt-16">
-            <motion.div
-              initial={reduce ? false : { opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-              className="font-mono text-[11px] uppercase tracking-[0.2em] text-primary/90 mb-3"
-            >
-              {eyebrow}
-            </motion.div>
-            <motion.h1
-              initial={reduce ? false : { opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-              className="font-display text-4xl xl:text-5xl font-bold tracking-tight leading-[1.05]"
-            >
-              Trade gaming.
-              <br />
-              <span className="bg-gradient-to-r from-primary via-primary-glow to-primary bg-clip-text text-transparent">
-                Without the trust tax.
-              </span>
-            </motion.h1>
-            <motion.p
-              initial={reduce ? false : { opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.6, delay: 0.25 }}
-              className="mt-5 text-white/65 max-w-md"
-            >
-              Join the marketplace where every seller is KYC-verified, every order is
-              escrow-protected, and disputes are resolved by humans — not bots.
-            </motion.p>
-
-            <ul className="mt-10 space-y-5">
-              {HIGHLIGHTS.map((h, i) => (
-                <motion.li
-                  key={h.title}
-                  initial={reduce ? false : { opacity: 0, x: -16 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.5, delay: 0.4 + i * 0.1, ease: [0.22, 1, 0.36, 1] }}
-                  className="flex items-start gap-4"
-                >
-                  <div className="h-10 w-10 shrink-0 rounded-xl bg-primary/15 border border-primary/30 grid place-items-center shadow-[0_0_20px_-6px_hsl(var(--primary-glow)/0.6)]">
-                    <h.icon className="h-4 w-4 text-primary" />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-sm">{h.title}</div>
-                    <div className="mt-0.5 text-xs text-white/55">{h.body}</div>
-                  </div>
-                </motion.li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Stats footer */}
-          <div className="hidden lg:flex items-end justify-between mt-auto pt-12 text-white/55 text-xs font-mono uppercase tracking-wider">
-            <div className="flex items-center gap-1.5">
-              <Sparkles className="h-3.5 w-3.5 text-accent" />
-              <span>Escrow on every order · 24/7 support</span>
-            </div>
-            <span>© GETX · Built remote-first</span>
-          </div>
-        </div>
-      </aside>
-
+export function AuthLayout({
+  eyebrow,
+  title,
+  subtitle,
+  children,
+  footer,
+  heroImageSrc = DEFAULT_HERO_SRC,
+  testimonials = DEFAULT_TESTIMONIALS,
+}: Props) {
+  return (
+    <div className="min-h-[100dvh] w-full flex flex-col md:flex-row bg-background text-foreground">
       {/* FORM SIDE */}
-      <main className="flex-1 flex flex-col">
-        <div className="flex-1 flex items-center justify-center px-4 sm:px-8 py-10 lg:py-14">
-          <motion.div
-            initial={reduce ? false : { opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.55, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-            className="w-full max-w-md"
-          >
-            <div className="lg:hidden mb-8">
-              <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-primary mb-2">
-                {eyebrow}
-              </div>
-            </div>
+      <section className="flex-1 flex flex-col">
+        <div className="flex items-center justify-between px-6 sm:px-10 pt-8">
+          <Link href="/" aria-label="GETX home" className="inline-flex">
+            <GetXLogo size="md" gradient />
+          </Link>
+        </div>
 
-            <div className="mb-8">
-              <h2 className="font-display text-3xl md:text-4xl font-bold tracking-tight">
-                {title}
-              </h2>
-              <p className="mt-2 text-sm md:text-base text-muted-foreground">{subtitle}</p>
+        <div className="flex-1 flex items-center justify-center px-6 sm:px-10 py-8">
+          <div className="w-full max-w-md">
+            <div className="animate-element animate-delay-100 font-mono text-[11px] uppercase tracking-[0.2em] text-primary mb-3">
+              {eyebrow}
             </div>
+            <h1 className="animate-element animate-delay-200 font-display text-3xl md:text-4xl font-bold tracking-tight leading-tight">
+              {title}
+            </h1>
+            <p className="animate-element animate-delay-300 mt-2 text-sm md:text-base text-muted-foreground">
+              {subtitle}
+            </p>
 
-            {children}
-          </motion.div>
+            <div className="animate-element animate-delay-400 mt-8">
+              {children}
+            </div>
+          </div>
         </div>
 
         {footer && (
-          <div className="px-4 sm:px-8 py-6 border-t border-border/40 text-center text-xs text-muted-foreground">
+          <div className="px-6 sm:px-10 py-6 border-t border-border/40 text-center text-xs text-muted-foreground">
             {footer}
           </div>
         )}
-      </main>
+      </section>
+
+      {/* HERO SIDE — desktop only */}
+      <section className="hidden md:block flex-1 relative p-4">
+        <div
+          className="animate-slide-right animate-delay-300 absolute inset-4 rounded-3xl bg-cover bg-center shadow-2xl"
+          style={{ backgroundImage: `url(${heroImageSrc})` }}
+          aria-hidden
+        />
+        {/* Cinematic overlay for legibility behind testimonial cards. */}
+        <div
+          aria-hidden
+          className="animate-slide-right animate-delay-300 absolute inset-4 rounded-3xl bg-gradient-to-t from-zinc-950/85 via-zinc-950/35 to-transparent"
+        />
+
+        {testimonials.length > 0 && (
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-4 px-8 w-full justify-center pointer-events-none">
+            {testimonials[0] && (
+              <div className="pointer-events-auto">
+                <TestimonialCard
+                  testimonial={testimonials[0]}
+                  delayClass="animate-delay-1000"
+                />
+              </div>
+            )}
+            {testimonials[1] && (
+              <div className="hidden xl:block pointer-events-auto">
+                <TestimonialCard
+                  testimonial={testimonials[1]}
+                  delayClass="animate-delay-1200"
+                />
+              </div>
+            )}
+            {testimonials[2] && (
+              <div className="hidden 2xl:block pointer-events-auto">
+                <TestimonialCard
+                  testimonial={testimonials[2]}
+                  delayClass="animate-delay-1400"
+                />
+              </div>
+            )}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

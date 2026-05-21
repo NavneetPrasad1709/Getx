@@ -220,4 +220,46 @@
   /* Blob-animation helper delays */
   .animation-delay-2000 { animation-delay: 2s; }
   .animation-delay-4000 { animation-delay: 4s; }
+
+  /* ── 21st.dev SignInPage animation utilities ──────────────────────────
+     Used by AuthLayout to stagger fade-in of form fields, slide-in the
+     hero panel from the right, and pop in floating testimonial cards.
+     The animation tokens themselves live in the keyframes block below. */
+  .animate-element {
+    animation: gx-fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+    opacity: 0;
+  }
+  .animate-slide-right {
+    animation: gx-slide-right 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+    opacity: 0;
+  }
+  .animate-testimonial {
+    animation: gx-pop-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    opacity: 0;
+  }
+  .animate-delay-100 { animation-delay: 0.10s; }
+  .animate-delay-200 { animation-delay: 0.20s; }
+  .animate-delay-300 { animation-delay: 0.30s; }
+  .animate-delay-400 { animation-delay: 0.40s; }
+  .animate-delay-500 { animation-delay: 0.50s; }
+  .animate-delay-600 { animation-delay: 0.60s; }
+  .animate-delay-700 { animation-delay: 0.70s; }
+  .animate-delay-800 { animation-delay: 0.80s; }
+  .animate-delay-900 { animation-delay: 0.90s; }
+  .animate-delay-1000 { animation-delay: 1.00s; }
+  .animate-delay-1200 { animation-delay: 1.20s; }
+  .animate-delay-1400 { animation-delay: 1.40s; }
+}
+
+@keyframes gx-fade-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes gx-slide-right {
+  from { opacity: 0; transform: translateX(40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes gx-pop-in {
+  0%   { opacity: 0; transform: translateY(10px) scale(0.96); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
 }
