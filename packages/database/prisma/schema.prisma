@@ -22,7 +22,11 @@ model User {
   // Authentication
   email         String    @unique
   emailVerified DateTime?
-  password      String
+  // Nullable so OAuth-only signups (Google / Discord) can land without
+  // a password. Email-password users still keep a bcrypt hash here;
+  // the auth service checks for null before attempting bcrypt.compare
+  // and surfaces a "use SSO to sign in" hint instead of a failed login.
+  password      String?
 
   // Phone (optional, used for SMS OTP)
   phone         String?   @unique
@@ -158,6 +162,7 @@ model User {
   passwordResets     PasswordReset[]
   emailVerifications EmailVerification[]
   phoneVerifications PhoneVerification[]
+  oauthAccounts      OAuthAccount[]
 
   customRequests  CustomRequest[]
   productListings ProductListing[]
@@ -327,6 +332,34 @@ model EmailVerification {
   @@index([expiresAt])
 }
 
+// Federated identities — one per (provider, providerId) tuple. A user
+// may link multiple providers (e.g. signed up with Google, later
+// connects Discord), so this is 1-to-many off User. Tokens are kept
+// for future profile-refresh flows; null when the provider doesn't
+// return them on subsequent logins.
+model OAuthAccount {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Provider key — String not enum so adding Apple / GitHub later
+  // doesn't require a Prisma migration. Values used in code:
+  // 'google', 'discord'.
+  provider      String
+  providerId    String
+  providerEmail String?
+
+  accessToken  String?   @db.Text
+  refreshToken String?   @db.Text
+  expiresAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, providerId])
+  @@index([userId])
+}
+
 model PhoneVerification {
   id     String @id @default(cuid())
   userId String
@@ -382,7 +415,9 @@ model WebhookEvent {
 model KycDocument {
   id     String @id @default(cuid())
   userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Compliance evidence — must survive user soft-delete. Hard-delete is
+  // blocked by Restrict so the row stays linked to the historical user.
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   documentType   DocumentType
   documentNumber String? // Hashed/encrypted
@@ -781,7 +816,11 @@ model Order {
   @@index([status])
   @@index([createdAt])
   @@index([orderNumber])
-  @@index([autoReleaseAt])
+  // Covers the escrow auto-release cron (escrowStatus=HELD + autoReleaseAt<now).
+  // Replaces the prior single-column [autoReleaseAt] index.
+  @@index([escrowStatus, autoReleaseAt])
+  // Admin / seller dashboards filter by status with a recency sort.
+  @@index([status, createdAt])
 }
 
 enum OrderStatus {
@@ -805,11 +844,12 @@ enum EscrowStatus {
 }
 
 enum PaymentProvider {
-  PADDLE // Merchant of Record (primary)
-  RAZORPAY // International (after KYC)
-  PAYPAL // Backup
-  CRYPTO // USDT/USDC
-  STRIPE // Future
+  // Stripe is the sole real checkout provider. Removed values
+  // (PADDLE, RAZORPAY, PAYPAL, CRYPTO) lived here during the multi-
+  // provider design phase; the migration that drops them lives in
+  // 20260520_phase5_stripe_only. Withdrawal rails (PayPal, Wise, UPI,
+  // Bank, crypto) are independent and tracked in `WithdrawalMethod`.
+  STRIPE
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1502,7 +1542,9 @@ model LoyaltyTransaction {
   id String @id @default(cuid())
 
   userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Financial ledger — never cascade-delete with the user. Account
+  // deletion soft-deletes the user; the ledger row stays for audit.
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   type   LoyaltyTxnType
   points Int // positive for earn, negative for redeem/expire
@@ -1547,7 +1589,8 @@ model Referral {
   code String @unique @db.VarChar(20)
 
   referrerId String
-  referrer   User   @relation("ReferrerOf", fields: [referrerId], references: [id], onDelete: Cascade)
+  // Reward attribution — keep the row even if the referrer is removed.
+  referrer   User   @relation("ReferrerOf", fields: [referrerId], references: [id], onDelete: Restrict)
 
   // Set on signup when the referee uses the code. Until then, null.
   refereeId    String?

@@ -311,6 +311,14 @@ export class AuthService {
       );
     }
 
+    // OAuth-only accounts have no password — surface a hint instead of
+    // letting bcrypt.compare crash on a null hash.
+    if (!user.password) {
+      throw new UnauthorizedException(
+        'This account was created with Google or Discord. Use the SSO button to sign in.',
+      );
+    }
+
     const isValid = await bcrypt.compare(dto.password, user.password);
 
     if (!isValid) {
@@ -531,6 +539,174 @@ export class AuthService {
     });
 
     return { message: 'Password reset. Please login.' };
+  }
+
+  // ─── OAuth handler ───────────────────────────────────────
+  // Called by the Google + Discord callback routes after passport has
+  // validated the provider's response. Three cases to cover:
+  //
+  //   1. Returning user — OAuthAccount already exists. Just log them
+  //      in and refresh the avatar/name if the provider sent newer
+  //      values.
+  //   2. New SSO on an existing email — there's already a User row
+  //      with this email (created via email+password earlier). Link
+  //      the OAuth identity to that row so they can use either method
+  //      to sign in going forward.
+  //   3. Brand new user — create a User with no password, mark email
+  //      as verified (the provider already verified it), attach the
+  //      OAuthAccount.
+  async handleOAuth(
+    profile: {
+      provider: 'google' | 'discord';
+      providerId: string;
+      email: string;
+      name: string | null;
+      avatar: string | null;
+      accessToken: string;
+      refreshToken: string | null;
+    },
+    req: Request,
+    res: Response,
+  ) {
+    const existingOAuth = await this.prisma.oAuthAccount.findUnique({
+      where: {
+        provider_providerId: {
+          provider: profile.provider,
+          providerId: profile.providerId,
+        },
+      },
+      include: { user: true },
+    });
+
+    let user;
+    if (existingOAuth) {
+      // Case 1 — refresh the cached tokens + opportunistically update
+      // the profile name/avatar if Google/Discord sent newer values.
+      await this.prisma.oAuthAccount.update({
+        where: { id: existingOAuth.id },
+        data: {
+          accessToken: profile.accessToken,
+          refreshToken: profile.refreshToken ?? existingOAuth.refreshToken,
+        },
+      });
+      user = existingOAuth.user;
+    } else {
+      const userByEmail = await this.prisma.user.findUnique({
+        where: { email: profile.email },
+      });
+
+      if (userByEmail) {
+        // Case 2 — link the new provider to the existing account.
+        await this.prisma.oAuthAccount.create({
+          data: {
+            userId: userByEmail.id,
+            provider: profile.provider,
+            providerId: profile.providerId,
+            providerEmail: profile.email,
+            accessToken: profile.accessToken,
+            refreshToken: profile.refreshToken,
+          },
+        });
+        await this.audit.log({
+          userId: userByEmail.id,
+          action: 'auth.oauth_linked',
+          entity: 'User',
+          entityId: userByEmail.id,
+          metadata: { provider: profile.provider },
+          ipAddress: req.ip,
+          severity: 'INFO',
+        });
+        user = userByEmail;
+      } else {
+        // Case 3 — fresh signup via OAuth. country defaults to 'US'
+        // since the provider doesn't share it; the onboarding flow
+        // will prompt the user to set their real country before any
+        // KYC-gated action. Email is pre-verified because Google /
+        // Discord don't release an email until the user has confirmed
+        // it themselves.
+        user = await this.prisma.user.create({
+          data: {
+            email: profile.email,
+            password: null,
+            name: profile.name,
+            avatar: profile.avatar,
+            country: 'US',
+            role: 'BOTH',
+            kycLevel: 'LEVEL_0',
+            kycStatus: 'NONE',
+            marketingOptIn: false,
+            interestedInSelling: false,
+            emailNotifications: true,
+            pushNotifications: true,
+            smsNotifications: true,
+            emailVerified: new Date(),
+            onboardingCompleted: false,
+            oauthAccounts: {
+              create: {
+                provider: profile.provider,
+                providerId: profile.providerId,
+                providerEmail: profile.email,
+                accessToken: profile.accessToken,
+                refreshToken: profile.refreshToken,
+              },
+            },
+          },
+        });
+        await this.audit.log({
+          userId: user.id,
+          action: 'auth.register_oauth',
+          entity: 'User',
+          entityId: user.id,
+          metadata: { provider: profile.provider, email: profile.email },
+          ipAddress: req.ip,
+          severity: 'INFO',
+        });
+      }
+    }
+
+    if (user.status === 'BANNED' || user.status === 'DELETED') {
+      throw new UnauthorizedException(
+        user.status === 'BANNED' ? 'Account banned' : 'Account deleted',
+      );
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        failedLoginCount: 0,
+        lockedUntil: null,
+        lastLoginAt: new Date(),
+        lastLoginIp: req.ip,
+        lastLoginUserAgent: req.headers['user-agent'],
+      },
+    });
+
+    const tokens = await this.generateTokens(user);
+    // OAuth flows imply "remember me" — the user explicitly chose to
+    // sign in via a connected account, so issue a 7-day refresh token.
+    this.setAuthCookies(res, tokens, true);
+
+    await this.audit.log({
+      userId: user.id,
+      action: 'auth.login_oauth',
+      entity: 'User',
+      entityId: user.id,
+      metadata: { provider: profile.provider },
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    // Redirect the browser back to the SPA. WEB_URL may be a
+    // comma-separated allowlist now; we pick the first entry as the
+    // canonical landing page. Anything in the list is a trusted
+    // origin per the same allowlist used by CORS.
+    const webUrls = (this.config.get<string>('WEB_URL') ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const landing = webUrls[0] ?? 'http://localhost:3000';
+    res.redirect(`${landing}/?oauth=ok`);
+    return;
   }
 
   async me(userId: string) {

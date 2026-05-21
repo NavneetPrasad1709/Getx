@@ -7,6 +7,8 @@ import { APP_GUARD } from '@nestjs/core';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { GoogleStrategy } from './strategies/google.strategy';
+import { DiscordStrategy } from './strategies/discord.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { SanctionsCron } from './sanctions.cron';
@@ -32,6 +34,8 @@ import { SanctionsCron } from './sanctions.cron';
   providers: [
     AuthService,
     JwtStrategy,
+    GoogleStrategy,
+    DiscordStrategy,
     SanctionsCron,
     // Order matters: throttler runs first to short-circuit before auth/role checks.
     { provide: APP_GUARD, useClass: ThrottlerGuard },

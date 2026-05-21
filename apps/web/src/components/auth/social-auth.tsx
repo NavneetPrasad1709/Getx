@@ -33,16 +33,6 @@ function DiscordMark({ className }: { className?: string }) {
   );
 }
 
-function AppleMark({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" aria-hidden>
-      <path
-        fill="currentColor"
-        d="M16.365 1.43c0 1.14-.42 2.2-1.26 3.18-.92 1.07-2.02 1.7-3.21 1.62-.04-1.07.39-2.18 1.24-3.15.85-.98 2.03-1.62 3.23-1.65zM20.4 17.74c-.51 1.18-.77 1.71-1.43 2.76-.93 1.46-2.23 3.29-3.85 3.3-1.43.02-1.8-.93-3.74-.92-1.94.01-2.34.94-3.78.92-1.62-.02-2.85-1.66-3.78-3.12-2.6-4.06-2.87-8.83-1.27-11.36 1.13-1.78 2.92-2.82 4.6-2.82 1.71 0 2.79.94 4.21.94 1.38 0 2.21-.94 4.2-.94 1.5 0 3.1.82 4.23 2.23-3.71 2.04-3.11 7.34.61 9.01z"
-      />
-    </svg>
-  );
-}
 
 interface ProviderButtonProps {
   label: string;
@@ -84,12 +74,11 @@ function ProviderButton({ label, icon, href, disabled }: ProviderButtonProps) {
 export function SocialAuth({ next }: { next?: string }) {
   const googleBase = process.env.NEXT_PUBLIC_GOOGLE_AUTH_URL;
   const discordBase = process.env.NEXT_PUBLIC_DISCORD_AUTH_URL;
-  const appleBase = process.env.NEXT_PUBLIC_APPLE_AUTH_URL;
   const suffix = next ? `?next=${encodeURIComponent(next)}` : '';
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <ProviderButton
           label="Google"
           icon={<GoogleMark className="h-4 w-4" />}
@@ -99,11 +88,6 @@ export function SocialAuth({ next }: { next?: string }) {
           label="Discord"
           icon={<DiscordMark className="h-4 w-4" />}
           href={discordBase ? `${discordBase}${suffix}` : undefined}
-        />
-        <ProviderButton
-          label="Apple"
-          icon={<AppleMark className="h-4 w-4 text-foreground" />}
-          href={appleBase ? `${appleBase}${suffix}` : undefined}
         />
       </div>
 

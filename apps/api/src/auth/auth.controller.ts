@@ -10,6 +10,7 @@ import {
   Req,
   Res,
 } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
@@ -24,6 +25,7 @@ import {
   ForgotPasswordSchema,
   ResetPasswordSchema,
 } from './dto/reset-password.dto';
+import type { OAuthProfileNormalized } from './strategies/google.strategy';
 
 @Controller('auth')
 export class AuthController {
@@ -123,5 +125,55 @@ export class AuthController {
   @Patch('me/activate-seller')
   async activateSeller(@CurrentUser('id') userId: string) {
     return this.auth.activateSeller(userId);
+  }
+
+  // ─── OAuth (Google / Discord) ──────────────────────────────────────
+  // Each provider has TWO routes: GET /:provider kicks off the redirect
+  // to the provider's consent screen, GET /:provider/callback is what
+  // the provider calls back to with `?code=...`. passport-{google,
+  // discord}-oauth20 handles the token exchange inside AuthGuard, and
+  // `req.user` ends up populated with the OAuthProfileNormalized that
+  // the strategy's validate() returned. We then either link the
+  // identity to an existing User row (same email) or create a fresh
+  // password-less account, set the same session cookies the email
+  // login flow sets, and redirect the browser back to the SPA.
+
+  @Public()
+  @Get('google')
+  @UseGuards(AuthGuard('google'))
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  async googleStart() {
+    // AuthGuard('google') handles the redirect — handler body is never
+    // executed.
+  }
+
+  @Public()
+  @Get('google/callback')
+  @UseGuards(AuthGuard('google'))
+  async googleCallback(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const profile = req.user as OAuthProfileNormalized;
+    return this.auth.handleOAuth(profile, req, res);
+  }
+
+  @Public()
+  @Get('discord')
+  @UseGuards(AuthGuard('discord'))
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  async discordStart() {
+    // see googleStart
+  }
+
+  @Public()
+  @Get('discord/callback')
+  @UseGuards(AuthGuard('discord'))
+  async discordCallback(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const profile = req.user as OAuthProfileNormalized;
+    return this.auth.handleOAuth(profile, req, res);
   }
 }

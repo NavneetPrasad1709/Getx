@@ -251,10 +251,18 @@ export class AccountService {
     await this.prisma.user.update({
       where: { id: userId },
       data: {
-        ...(dto.emailNotifications !== undefined ? { emailNotifications: dto.emailNotifications } : {}),
-        ...(dto.pushNotifications !== undefined ? { pushNotifications: dto.pushNotifications } : {}),
-        ...(dto.smsNotifications !== undefined ? { smsNotifications: dto.smsNotifications } : {}),
-        ...(dto.marketingOptIn !== undefined ? { marketingOptIn: dto.marketingOptIn } : {}),
+        ...(dto.emailNotifications !== undefined
+          ? { emailNotifications: dto.emailNotifications }
+          : {}),
+        ...(dto.pushNotifications !== undefined
+          ? { pushNotifications: dto.pushNotifications }
+          : {}),
+        ...(dto.smsNotifications !== undefined
+          ? { smsNotifications: dto.smsNotifications }
+          : {}),
+        ...(dto.marketingOptIn !== undefined
+          ? { marketingOptIn: dto.marketingOptIn }
+          : {}),
       },
     });
   }
@@ -270,6 +278,11 @@ export class AccountService {
     });
     if (!user) throw new NotFoundException();
 
+    if (!user.password) {
+      throw new ForbiddenException(
+        'This account uses Google / Discord sign-in. Set a password from Settings > Security first.',
+      );
+    }
     const ok = await bcrypt.compare(dto.currentPassword, user.password);
     if (!ok) throw new ForbiddenException('Current password is wrong');
     if (dto.currentPassword === dto.newPassword) {
@@ -311,7 +324,9 @@ export class AccountService {
   /* Submits a KycDocument with Aadhaar number (hashed) + selfie. Sets
      User.kycStatus=SUBMITTED so the admin queue picks it up. */
   async submitKyc(userId: string, dto: SubmitKycDto): Promise<KycDocument> {
-    const aadhaarHash = createHash('sha256').update(dto.aadhaarNumber).digest('hex');
+    const aadhaarHash = createHash('sha256')
+      .update(dto.aadhaarNumber)
+      .digest('hex');
 
     /* Reject duplicate aadhaarHash bound to a different user. */
     const collision = await this.prisma.user.findFirst({
@@ -319,7 +334,9 @@ export class AccountService {
       select: { id: true },
     });
     if (collision) {
-      throw new BadRequestException('Aadhaar already linked to another account');
+      throw new BadRequestException(
+        'Aadhaar already linked to another account',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -407,8 +424,10 @@ export class AccountService {
   }
 
   /* Soft-delete — marks the user DELETED + sets deletedAt. A 30-day grace
-     period lets the user reverse it. After 30 days a cron permanently
-     anonymises PII (not implemented here — admin cron later). */
+     period lets the user reverse it. After 30 days, the daily
+     `AccountAnonymizeCron` permanently redacts PII while keeping the
+     User row so financial foreign keys (Order, WalletTransaction,
+     Withdrawal, AuditLog) stay intact. */
   async deleteAccount(
     userId: string,
     dto: DeleteAccountDto,
@@ -421,6 +440,15 @@ export class AccountService {
     if (!user) throw new NotFoundException();
     if (user.status === 'DELETED') {
       throw new BadRequestException('Account already deleted');
+    }
+    if (!user.password) {
+      // OAuth-only account — there's no password to verify against.
+      // Require the SSO sign-in instead before we'll soft-delete. The
+      // very first time we ship a /account/delete flow for SSO users
+      // we can add a re-auth step, but for now block with a clear hint.
+      throw new ForbiddenException(
+        'This account uses Google / Discord sign-in. Set a password from Settings > Security first to confirm deletion.',
+      );
     }
     const ok = await bcrypt.compare(dto.password, user.password);
     if (!ok) throw new ForbiddenException('Password is wrong');
