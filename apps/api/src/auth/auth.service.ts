@@ -2,14 +2,13 @@ import {
   Injectable,
   BadRequestException,
   UnauthorizedException,
-  ConflictException,
   ForbiddenException,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { randomBytes, randomInt } from 'crypto';
+import { createHash, randomBytes, randomInt } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import type { Request, Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
@@ -91,7 +90,27 @@ export class AuthService {
       select: { id: true },
     });
     if (existing) {
-      throw new ConflictException('Email already registered');
+      // Email-enumeration protection — return the same response shape a
+      // fresh signup would emit so an attacker can't probe which addresses
+      // are registered. The legitimate owner sees "check your email" and,
+      // finding nothing, naturally tries the login / reset flow instead.
+      // The duplicate attempt is audit-logged so ops can spot probing.
+      await this.audit.log({
+        userId: existing.id,
+        action: 'auth.register_duplicate_email',
+        entity: 'User',
+        entityId: existing.id,
+        metadata: { email: dto.email, country: dto.country },
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        severity: 'WARNING',
+      });
+      return {
+        message:
+          'Registration successful. Check your email for verification code.',
+        userId: existing.id,
+        email: dto.email,
+      };
     }
 
     /* Name-watchlist soft flag — does NOT block; just flags for manual
@@ -364,7 +383,7 @@ export class AuthService {
     }
 
     const tokenRecord = await this.prisma.refreshToken.findUnique({
-      where: { token: refreshToken },
+      where: { token: this.hashRefreshToken(refreshToken) },
       include: { user: true },
     });
 
@@ -420,7 +439,7 @@ export class AuthService {
   ) {
     if (refreshToken) {
       await this.prisma.refreshToken.updateMany({
-        where: { token: refreshToken, userId },
+        where: { token: this.hashRefreshToken(refreshToken), userId },
         data: { revoked: true, revokedAt: new Date() },
       });
     }
@@ -617,13 +636,20 @@ export class AuthService {
     await this.prisma.refreshToken.create({
       data: {
         userId: user.id,
-        token: refreshToken,
+        // Stored as SHA-256 hex so a DB read alone can't surrender a
+        // usable refresh JWT. The unique constraint still applies (hash
+        // of an HMAC-signed JWT is collision-resistant in practice).
+        token: this.hashRefreshToken(refreshToken),
         family: tokenFamily,
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       },
     });
 
     return { accessToken, refreshToken };
+  }
+
+  private hashRefreshToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
   }
 
   private setAuthCookies(
@@ -634,10 +660,16 @@ export class AuthService {
     const isProd = this.config.get<string>('NODE_ENV') === 'production';
     const domain = this.config.get<string>('COOKIE_DOMAIN');
 
+    /* sameSite=none is required when the API and the SPA live on different
+       registrable domains (api-production-XXXX.up.railway.app vs.
+       getx-web.vercel.app) — Lax wouldn't be sent on the cross-site fetch
+       at all. None requires Secure, which we already set in prod. Local dev
+       sticks with Lax over http://localhost so browsers don't reject the
+       cookie outright. */
     const baseOptions = {
       httpOnly: true,
       secure: isProd,
-      sameSite: 'lax' as const,
+      sameSite: (isProd ? 'none' : 'lax') as 'none' | 'lax',
       ...(domain ? { domain } : {}),
     };
 
@@ -656,10 +688,13 @@ export class AuthService {
     const isProd = this.config.get<string>('NODE_ENV') === 'production';
     const domain = this.config.get<string>('COOKIE_DOMAIN');
 
+    /* Must match the attributes the cookie was set with — browsers only
+       delete a cookie when (name + domain + path + sameSite/secure scope)
+       all match the originating Set-Cookie. */
     const opts = {
       httpOnly: true,
       secure: isProd,
-      sameSite: 'lax' as const,
+      sameSite: (isProd ? 'none' : 'lax') as 'none' | 'lax',
       path: '/',
       ...(domain ? { domain } : {}),
     };

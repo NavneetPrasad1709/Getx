@@ -19,6 +19,12 @@ async function bootstrap() {
   // localhost:3000 fallback from leaking into prod redirects, and surfaces
   // missing JWT secrets at boot instead of at first auth attempt.
   if (process.env.NODE_ENV === 'production') {
+    /* COOKIE_DOMAIN is intentionally OPTIONAL. When unset, cookies fall
+       back to host-only on the API origin — the correct behavior when
+       the SPA and API live on unrelated registrable domains (e.g.
+       api-*.up.railway.app vs *.vercel.app). Setting it to a Public
+       Suffix List entry like ".vercel.app" makes browsers drop the
+       cookie silently, so we prefer absent over wrong. */
     const required = [
       'DATABASE_URL',
       'JWT_ACCESS_SECRET',
@@ -27,7 +33,6 @@ async function bootstrap() {
       'WEB_URL',
       'SELLER_URL',
       'ADMIN_URL',
-      'COOKIE_DOMAIN',
     ];
     const missing = required.filter((key) => !process.env[key]);
     if (missing.length > 0) {
