@@ -7,7 +7,9 @@ import { cn } from '../lib/utils';
 
 const inputVariants = cva(
   [
-    'flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm',
+    // 16px on mobile (Safari iOS won't trigger zoom-on-focus below 16px),
+    // 14px from md up — keeps the desktop visual rhythm intact.
+    'flex h-10 w-full rounded-md border bg-background px-3 py-2 text-base md:text-sm',
     'ring-offset-background',
     'transition-[border-color,box-shadow] duration-ui ease-apple',
     'file:border-0 file:bg-transparent file:text-sm file:font-medium',
@@ -84,7 +86,8 @@ const FloatingInput = React.forwardRef<HTMLInputElement, FloatingInputProps>(
             aria-invalid={state === 'error' || undefined}
             aria-describedby={descId}
             className={cn(
-              'peer flex h-14 w-full rounded-md border bg-background px-3 pt-5 pb-1.5 text-sm',
+              // 16px on mobile prevents Safari iOS auto-zoom on focus.
+              'peer flex h-14 w-full rounded-md border bg-background px-3 pt-5 pb-1.5 text-base md:text-sm',
               'ring-offset-background transition-[border-color,box-shadow] duration-ui ease-apple',
               'placeholder:text-transparent',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
