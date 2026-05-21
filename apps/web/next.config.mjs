@@ -4,6 +4,18 @@ const nextConfig = {
   poweredByHeader: false,
   compress: true,
 
+  /* Workspace packages now ship pre-built JS (main -> dist/index.js) so Node
+     consumers like the NestJS API can require them. transpilePackages tells
+     Next to keep transpiling them from `src/` so frontend dev doesn't need
+     a workspace rebuild on every change. */
+  transpilePackages: [
+    '@getx/database',
+    '@getx/games',
+    '@getx/types',
+    '@getx/utils',
+    '@getx/ui',
+  ],
+
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'r2.dev' },

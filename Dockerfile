@@ -23,6 +23,14 @@ COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules
 COPY . .
 RUN pnpm --filter @getx/database db:generate
+# Compile workspace packages to JS before building the API. The API's
+# `dist/main.js` issues `require('@getx/database')` at runtime; without
+# pre-built JS, Node would try to load `src/index.ts` and crash with a
+# `Cannot use import statement outside a module` SyntaxError.
+RUN pnpm --filter @getx/types build
+RUN pnpm --filter @getx/utils build
+RUN pnpm --filter @getx/games build
+RUN pnpm --filter @getx/database build
 RUN pnpm --filter @getx/api build
 # `pnpm deploy` flattens transitive deps (express via @nestjs/platform-express,
 # etc.) into a self-contained /deploy directory so the prod image doesn't

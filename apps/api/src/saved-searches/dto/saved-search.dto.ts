@@ -1,10 +1,11 @@
 import { z } from 'zod';
-import { ListListingsSchema } from '../../listings/dto/list-listings.dto';
+import { ListListingsBaseSchema } from '../../listings/dto/list-listings.dto';
 
 /* Saved-search filter snapshot — mirrors ListListingsDto but drops the
    pagination/sort cursors so they don't pin the saved query to a single
-   page when the cron replays it. */
-export const SavedSearchFiltersSchema = ListListingsSchema.omit({
+   page when the cron replays it. Omits from the BASE (pre-refine) schema
+   because Zod v4 doesn't allow .omit() on a refined schema. */
+export const SavedSearchFiltersSchema = ListListingsBaseSchema.omit({
   page: true,
   limit: true,
 });
