@@ -138,7 +138,12 @@ export class AuthController {
   // password-less account, set the same session cookies the email
   // login flow sets, and redirect the browser back to the SPA.
 
+  // Throttle the OAuth start routes so a bot can't burn through
+  // Google/Discord redirect budgets or fill our token-exchange queue
+  // with garbage callbacks. 20/min/IP is generous for a real human
+  // who clicks "Sign in with Google" once.
   @Public()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Get('google')
   @UseGuards(AuthGuard('google'))
   // eslint-disable-next-line @typescript-eslint/no-empty-function
@@ -159,6 +164,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Get('discord')
   @UseGuards(AuthGuard('discord'))
   // eslint-disable-next-line @typescript-eslint/no-empty-function

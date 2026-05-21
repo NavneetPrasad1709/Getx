@@ -34,7 +34,12 @@ import {
 export class ListingsController {
   constructor(private listings: ListingsService) {}
 
+  // 60/min per IP — high enough that a normal browser session never
+  // trips it (paging + search refresh easily stays under one per second)
+  // but low enough that a scraper hammering the index page from a single
+  // host gets a 429 before it drains Neon connections.
   @Public()
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @Get()
   listListings(@Query() query: unknown): Promise<ListListingsResponse> {
     const dto = ListListingsSchema.parse(query);

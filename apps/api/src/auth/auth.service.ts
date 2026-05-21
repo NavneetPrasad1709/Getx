@@ -24,6 +24,7 @@ import {
   parseAllowlist,
   shouldFlagName,
 } from './sanctions';
+import { firstOrigin } from '../common/config-helpers';
 
 @Injectable()
 export class AuthService {
@@ -481,7 +482,7 @@ export class AuthService {
       },
     });
 
-    const resetUrl = `${this.config.get<string>('WEB_URL')}/auth/reset-password?token=${token}`;
+    const resetUrl = `${firstOrigin(this.config, 'WEB_URL', 'http://localhost:3000')}/auth/reset-password?token=${token}`;
 
     void this.mail
       .sendPasswordReset(user.email, user.name || 'there', resetUrl)
@@ -697,14 +698,8 @@ export class AuthService {
     });
 
     // Redirect the browser back to the SPA. WEB_URL may be a
-    // comma-separated allowlist now; we pick the first entry as the
-    // canonical landing page. Anything in the list is a trusted
-    // origin per the same allowlist used by CORS.
-    const webUrls = (this.config.get<string>('WEB_URL') ?? '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const landing = webUrls[0] ?? 'http://localhost:3000';
+    // comma-separated allowlist; pick the canonical first entry.
+    const landing = firstOrigin(this.config, 'WEB_URL', 'http://localhost:3000');
     res.redirect(`${landing}/?oauth=ok`);
     return;
   }

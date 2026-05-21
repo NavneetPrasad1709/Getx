@@ -8,15 +8,13 @@ import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@getx/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { firstOrigin } from '../common/config-helpers';
 import { ConversationsService } from '../conversations/conversations.service';
 import { ChatGateway } from '../conversations/chat.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { MockPaymentProvider } from './providers/mock.provider';
-import { PaddlePaymentProvider } from './providers/paddle.provider';
 import { StripePaymentProvider } from './providers/stripe.provider';
-import { PayPalPaymentProvider } from './providers/paypal.provider';
-import { RazorpayPaymentProvider } from './providers/razorpay.provider';
 import {
   CheckoutOptions,
   CheckoutSession,
@@ -41,54 +39,34 @@ export class PaymentsService {
     private chat: ChatGateway,
     private notifications: NotificationsService,
     mock: MockPaymentProvider,
-    paddle: PaddlePaymentProvider,
     stripe: StripePaymentProvider,
-    paypal: PayPalPaymentProvider,
-    razorpay: RazorpayPaymentProvider,
     private loyalty: LoyaltyService,
   ) {
     this.providers = {
       mock,
-      paddle,
       stripe,
-      paypal,
-      razorpay,
     };
 
     const hasStripe = !!config.get<string>('STRIPE_SECRET_KEY');
-    const hasRazorpay = !!config.get<string>('RAZORPAY_KEY_ID');
-    const hasPayPal = !!config.get<string>('PAYPAL_CLIENT_ID');
-    const hasPaddle = !!config.get<string>('PADDLE_API_KEY');
     this.logger.log(
-      `Payment providers — stripe:${hasStripe} paypal:${hasPayPal} razorpay:${hasRazorpay} paddle:${hasPaddle} (mock fallback always on)`,
+      `Payment providers — stripe:${hasStripe} (mock fallback active outside production)`,
     );
   }
 
   /**
-   * Per-order provider routing.
-   *  - INR  → Razorpay (or mock if RAZORPAY_KEY_ID missing)
-   *  - else → Stripe   (or mock if STRIPE_SECRET_KEY missing)
-   *
-   * Future: PayPal as buyer-opt-in once `Order.buyerPreferredProvider`
-   * (or similar) is added. Paddle stays available via direct lookup
-   * for legacy orders but is not auto-selected.
+   * Provider routing — Stripe is the only real checkout provider.
+   * Stripe handles every currency we accept (USD, INR, EUR, etc.)
+   * via its global card / wallet rails. Without `STRIPE_SECRET_KEY`
+   * we fall through to the `mock` provider for local dev; production
+   * refuses to route through mock and throws so the misconfiguration
+   * is visible at the first checkout attempt.
    */
-  private resolveProvider(currency: string): PaymentProvider {
-    const upper = currency.toUpperCase();
+  private resolveProvider(_currency: string): PaymentProvider {
     const isProd = process.env.NODE_ENV === 'production';
-    if (upper === 'INR') {
-      const hasKey = !!this.config.get<string>('RAZORPAY_KEY_ID');
-      if (!hasKey && isProd) {
-        throw new Error(
-          'RAZORPAY_KEY_ID missing in production — refusing to route INR checkout through the mock provider.',
-        );
-      }
-      return hasKey ? this.providers.razorpay : this.providers.mock;
-    }
     const hasStripe = !!this.config.get<string>('STRIPE_SECRET_KEY');
     if (!hasStripe && isProd) {
       throw new Error(
-        'STRIPE_SECRET_KEY missing in production — refusing to route non-INR checkout through the mock provider.',
+        'STRIPE_SECRET_KEY missing in production — refusing to route checkout through the mock provider.',
       );
     }
     return hasStripe ? this.providers.stripe : this.providers.mock;
@@ -113,8 +91,7 @@ export class PaymentsService {
       throw new BadRequestException('Order not awaiting payment');
     }
 
-    const webUrl =
-      this.config.get<string>('WEB_URL') ?? 'http://localhost:3000';
+    const webUrl = firstOrigin(this.config, 'WEB_URL', 'http://localhost:3000');
 
     /* Subtract any GETX Coins or redeemed loyalty points applied to this
        order so the gateway only charges the remaining balance. Both are
@@ -141,12 +118,7 @@ export class PaymentsService {
     await this.prisma.order.update({
       where: { id: orderId },
       data: {
-        paymentProvider: PROVIDER_TO_PRISMA[provider.name] as
-          | 'STRIPE'
-          | 'PAYPAL'
-          | 'RAZORPAY'
-          | 'PADDLE'
-          | null,
+        paymentProvider: PROVIDER_TO_PRISMA[provider.name] as 'STRIPE' | null,
         paymentTransactionId: session.sessionId,
       },
     });
@@ -180,7 +152,7 @@ export class PaymentsService {
       throw new BadRequestException('Provider not configured');
     }
 
-    const event = provider.parseWebhook(headers, body);
+    const event = await provider.parseWebhook(headers, body);
     if (!event) {
       this.logger.warn(`Invalid webhook for ${name}`);
       throw new BadRequestException('Invalid webhook');
@@ -195,20 +167,14 @@ export class PaymentsService {
    * new integrations MUST use /payments/webhook/:provider.
    */
   async handleWebhook(headers: Record<string, string>, body: string) {
-    const order: ProviderName[] = [
-      'stripe',
-      'razorpay',
-      'paypal',
-      'paddle',
-      'mock',
-    ];
+    const order: ProviderName[] = ['stripe', 'mock'];
 
     let event: WebhookEvent | null = null;
     let matched: PaymentProvider | null = null;
     for (const name of order) {
       if (!this.providerHasSecret(name)) continue;
       const provider = this.providers[name];
-      const parsed = provider.parseWebhook(headers, body);
+      const parsed = await provider.parseWebhook(headers, body);
       if (parsed) {
         event = parsed;
         matched = provider;
@@ -228,12 +194,6 @@ export class PaymentsService {
     switch (name) {
       case 'stripe':
         return !!this.config.get<string>('STRIPE_WEBHOOK_SECRET');
-      case 'razorpay':
-        return !!this.config.get<string>('RAZORPAY_WEBHOOK_SECRET');
-      case 'paypal':
-        return !!this.config.get<string>('PAYPAL_WEBHOOK_ID');
-      case 'paddle':
-        return !!this.config.get<string>('PADDLE_WEBHOOK_SECRET');
       case 'mock':
         /* Mock is dev-only — its webhook handler is reachable from the
            controller's /webhook/:provider route which itself runs only
@@ -247,10 +207,7 @@ export class PaymentsService {
    * (provider, externalId); a duplicate hit returns the prior outcome
    * unchanged so a replayed refund or failure never re-mutates state.
    */
-  private async dispatchEvent(
-    provider: PaymentProvider,
-    event: WebhookEvent,
-  ) {
+  private async dispatchEvent(provider: PaymentProvider, event: WebhookEvent) {
     this.logger.log(
       `Webhook received from ${provider.name}: ${event.type} (${event.externalId})`,
     );
@@ -359,18 +316,14 @@ export class PaymentsService {
         },
       });
 
-      // Decrement listing stock if applicable
-      if (
-        order.productListingId &&
-        order.productListing &&
-        order.productListing.stock > 0
-      ) {
+      /* Stock was already decremented when the order was created
+         (atomic reserve in orders.service.createFromListing). On
+         payment success we only need to bump the soldCount visible to
+         the seller dashboard. */
+      if (order.productListingId && order.productListing) {
         await tx.productListing.update({
           where: { id: order.productListingId },
-          data: {
-            stock: { decrement: 1 },
-            soldCount: { increment: 1 },
-          },
+          data: { soldCount: { increment: 1 } },
         });
       }
 
@@ -471,7 +424,23 @@ export class PaymentsService {
         orderNumber: order.orderNumber,
         amount: order.buyerTotal,
       },
+      /* Defence-in-depth — the WebhookEvent table + status guards
+         already prevent re-entry into this function, but if a future
+         caller wires up a second trigger for ORDER_PAID we still won't
+         double-fire the email. */
+      dedupeKey: `order:${order.id}:paid`,
       sendEmail: true,
+    });
+
+    /* Live push to the seller's open dashboards so the orders queue
+       refreshes the instant the order lands — without this the seller
+       only sees the new row on the next React Query refocus poll.
+       The chat gateway scopes the emit to the seller's per-user room
+       so a buyer never sees seller order pushes. */
+    this.chat.broadcastToUser(order.sellerId, 'order:new', {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      amount: order.buyerTotal,
     });
 
     this.logger.log(
@@ -505,8 +474,24 @@ export class PaymentsService {
           walletApplied: true,
           currency: true,
           orderNumber: true,
+          productListingId: true,
+          paymentMetadata: true,
         },
       });
+      /* Restore the reserved listing stock — order creation took it
+         out of inventory and the cancellation must put it back so the
+         listing doesn't lose a unit to a buyer who never paid. */
+      if (fresh?.productListingId) {
+        const meta = fresh.paymentMetadata as { quantity?: number } | null;
+        const qty =
+          typeof meta?.quantity === 'number' && meta.quantity > 0
+            ? meta.quantity
+            : 1;
+        await tx.productListing.update({
+          where: { id: fresh.productListingId },
+          data: { stock: { increment: qty } },
+        });
+      }
       if (fresh && fresh.walletApplied > 0) {
         const buyer = await tx.user.findUnique({
           where: { id: fresh.buyerId },

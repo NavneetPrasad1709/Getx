@@ -17,6 +17,8 @@
     "@getx/utils": "workspace:*",
     "@hookform/resolvers": "^5.2.2",
     "@tanstack/react-query": "^5.100.9",
+    "@vercel/analytics": "^2.0.1",
+    "@vercel/speed-insights": "^2.0.0",
     "axios": "^1.16.0",
     "clsx": "^2.1.1",
     "framer-motion": "^11.18.2",

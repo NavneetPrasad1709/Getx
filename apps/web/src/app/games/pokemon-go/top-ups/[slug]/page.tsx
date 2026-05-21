@@ -3,8 +3,9 @@
 import * as React from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Button } from '@getx/ui';
+import { Button, toast } from '@getx/ui';
 import { Header } from '@/components/header';
+import { gateCheckout } from '@/lib/feature-flags';
 import { LandingFooter } from '@/components/landing/landing-footer';
 import {
   useListing,
@@ -158,7 +159,7 @@ export default function TopUpDetailPage() {
     };
   }, [listing, activeVariant]);
 
-  const onBuy = () => setCheckoutOpen(true);
+  const onBuy = gateCheckout(() => setCheckoutOpen(true), toast);
 
   if (isLoading) {
     return (

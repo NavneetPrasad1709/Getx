@@ -6,9 +6,13 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import type { Prisma, SavedSearch } from '@getx/database';
+import type { SavedSearch } from '@getx/database';
 import { PrismaService } from '../prisma/prisma.service';
-import { ListingsService, type ListingListItem } from '../listings/listings.service';
+import { firstOrigin } from '../common/config-helpers';
+import {
+  ListingsService,
+  type ListingListItem,
+} from '../listings/listings.service';
 import { ListListingsSchema } from '../listings/dto/list-listings.dto';
 import { MailService } from '../mail/mail.service';
 import { UsersService } from '../users/users.service';
@@ -37,10 +41,13 @@ export class SavedSearchesService {
     private users: UsersService,
     config: ConfigService,
   ) {
-    this.webUrl = config.get<string>('WEB_URL') ?? 'http://localhost:3000';
+    this.webUrl = firstOrigin(config, 'WEB_URL', 'http://localhost:3000');
   }
 
-  async create(userId: string, dto: CreateSavedSearchDto): Promise<SavedSearch> {
+  async create(
+    userId: string,
+    dto: CreateSavedSearchDto,
+  ): Promise<SavedSearch> {
     const filters = dto.filters;
     const name = dto.name?.trim() || buildDefaultName(filters);
 
@@ -50,7 +57,7 @@ export class SavedSearchesService {
         name,
         gameSlug: filters.gameSlug ?? 'pokemon-go',
         tabType: filters.tabType ?? null,
-        filters: filters as unknown as Prisma.InputJsonValue,
+        filters: filters,
         emailAlerts: dto.emailAlerts,
       },
     });
@@ -68,7 +75,9 @@ export class SavedSearchesService {
     id: string,
     patch: UpdateSavedSearchDto,
   ): Promise<SavedSearch> {
-    const existing = await this.prisma.savedSearch.findUnique({ where: { id } });
+    const existing = await this.prisma.savedSearch.findUnique({
+      where: { id },
+    });
     if (!existing) throw new NotFoundException();
     if (existing.userId !== userId) throw new ForbiddenException();
 
@@ -88,7 +97,9 @@ export class SavedSearchesService {
   }
 
   async remove(userId: string, id: string): Promise<{ success: true }> {
-    const existing = await this.prisma.savedSearch.findUnique({ where: { id } });
+    const existing = await this.prisma.savedSearch.findUnique({
+      where: { id },
+    });
     if (!existing) throw new NotFoundException();
     if (existing.userId !== userId) throw new ForbiddenException();
 
@@ -104,6 +115,9 @@ export class SavedSearchesService {
      whole cron run down. */
   @Cron(CronExpression.EVERY_4_HOURS, { name: 'savedSearchAlerts' })
   async runAlerts(): Promise<{ checked: number; notified: number }> {
+    // Bounded scan — at 20 lakh users we may exceed this; switch to cursor
+    // pagination if `notified` ever clips at the cap (logged below).
+    const SCAN_CAP = 1000;
     const candidates = await this.prisma.savedSearch.findMany({
       where: {
         emailAlerts: true,
@@ -117,7 +131,13 @@ export class SavedSearchesService {
           select: { id: true, email: true, name: true, unsubscribeToken: true },
         },
       },
+      take: SCAN_CAP,
     });
+    if (candidates.length === SCAN_CAP) {
+      this.logger.warn(
+        `savedSearch alerts hit SCAN_CAP=${SCAN_CAP} — cursor pagination required`,
+      );
+    }
 
     let notified = 0;
     for (const row of candidates) {
@@ -177,7 +197,10 @@ export class SavedSearchesService {
       matches: newMatches.slice(0, MATCH_PREVIEW_COUNT),
       totalMatches: newMatches.length,
       viewAllUrl: this.buildViewAllUrl(row),
-      unsubscribeUrl: await this.users.unsubscribeUrlFor(row.user.id, this.webUrl),
+      unsubscribeUrl: await this.users.unsubscribeUrlFor(
+        row.user.id,
+        this.webUrl,
+      ),
     });
 
     await this.prisma.savedSearch.update({
@@ -198,6 +221,12 @@ export class SavedSearchesService {
     for (const [k, v] of Object.entries(f)) {
       if (v === undefined || v === null || v === '') continue;
       if (k === 'gameSlug' || k === 'tabType') continue;
+      if (
+        typeof v !== 'string' &&
+        typeof v !== 'number' &&
+        typeof v !== 'boolean'
+      )
+        continue;
       qs.set(k, String(v));
     }
     const tail = qs.toString();

@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import type { NotificationType, Prisma } from '@getx/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
+import { firstOrigin } from '../common/config-helpers';
 
 interface CreateNotificationParams {
   userId: string;
@@ -19,6 +20,17 @@ interface CreateNotificationParams {
   metadata?: Prisma.InputJsonValue;
   /** Send transactional email in addition to in-app. */
   sendEmail?: boolean;
+  /**
+   * Optional caller-supplied idempotency key. When set, a prior
+   * notification with the same (userId, type, dedupeKey) is returned
+   * instead of inserting a duplicate. Pattern: `order:<id>:paid`,
+   * `dispute:<id>:opened`, etc. Keep it short and stable.
+   *
+   * Most upstream paths (webhook dispatch table, order status guards)
+   * are already idempotent so the dedupe rarely fires — it's a final
+   * safety net for the "webhook retried after long delay" case.
+   */
+  dedupeKey?: string;
 }
 
 const LIST_SELECT = {
@@ -58,6 +70,56 @@ export class NotificationsService {
     params: CreateNotificationParams,
   ): Promise<NotificationListItem | null> {
     try {
+      /* Dedupe gate — if the caller supplied a key, look up a prior
+         notification with the same (userId, type, metadata.dedupeKey)
+         and short-circuit. The lookup uses a JSON-path predicate; not
+         the fastest, but fine for the low-frequency callers (order
+         lifecycle, dispute, payout) that opt in. */
+      if (params.dedupeKey) {
+        const existing = await this.prisma.notification.findFirst({
+          where: {
+            userId: params.userId,
+            type: params.type,
+            metadata: {
+              path: ['dedupeKey'],
+              equals: params.dedupeKey,
+            },
+          },
+          select: LIST_SELECT,
+        });
+        if (existing) {
+          this.logger.debug(
+            `Notification dedupe hit: ${params.type}/${params.dedupeKey}`,
+          );
+          return existing;
+        }
+      }
+
+      /* Merge dedupeKey into the persisted metadata so the next
+         lookup can find it. metadata is JSON-valued so we only spread
+         when the caller passed a plain object (the typical case);
+         primitives / arrays are wrapped under a `value` key alongside
+         dedupeKey instead of being silently dropped. */
+      const persistedMetadata: Prisma.InputJsonValue | undefined = (() => {
+        if (!params.dedupeKey) return params.metadata;
+        const base = params.metadata;
+        const isPlainObject =
+          base !== null &&
+          base !== undefined &&
+          typeof base === 'object' &&
+          !Array.isArray(base);
+        if (isPlainObject) {
+          return {
+            ...(base as Record<string, Prisma.InputJsonValue>),
+            dedupeKey: params.dedupeKey,
+          };
+        }
+        if (base === undefined || base === null) {
+          return { dedupeKey: params.dedupeKey };
+        }
+        return { value: base, dedupeKey: params.dedupeKey };
+      })();
+
       const notification = await this.prisma.notification.create({
         data: {
           userId: params.userId,
@@ -66,7 +128,7 @@ export class NotificationsService {
           message: params.message ?? '',
           link: params.link,
           imageUrl: params.imageUrl,
-          metadata: params.metadata,
+          metadata: persistedMetadata,
         },
         select: LIST_SELECT,
       });
@@ -106,8 +168,7 @@ export class NotificationsService {
       return;
     }
 
-    const webUrl =
-      this.config.get<string>('WEB_URL') ?? 'http://localhost:3000';
+    const webUrl = firstOrigin(this.config, 'WEB_URL', 'http://localhost:3000');
     const actionUrl = n.link ? `${webUrl}${n.link}` : webUrl;
 
     try {

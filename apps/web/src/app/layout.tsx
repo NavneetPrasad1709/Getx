@@ -4,6 +4,7 @@ import { ThemeProvider, Toaster, PageTransition, TooltipProvider } from '@getx/u
 import { AuthProvider } from '@/hooks/use-auth';
 import { QueryProvider } from '@/components/query-provider';
 import { CustomCursorLoader } from '@/components/custom-cursor-loader';
+import { CookieConsent } from '@/components/cookie-consent';
 import './globals.css';
 
 /* next/font self-hosts the WOFF2 files at build, drops the render-
@@ -32,22 +33,71 @@ const jetbrains = JetBrains_Mono({
   preload: false,
 });
 
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  process.env.NEXT_PUBLIC_WEB_URL ??
+  'https://www.getx.live';
+
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'https://getx.gg'),
+  metadataBase: new URL(SITE_URL),
   title: {
     default: 'GETX — Get X. Get gaming.',
     template: '%s | GETX',
   },
-  description: 'The premium gaming marketplace. Verified sellers, secure escrow, instant delivery.',
+  description:
+    'The premium gaming marketplace. Verified sellers, secure escrow, instant delivery.',
   icons: {
     icon: '/favicon.ico',
     apple: '/apple-touch-icon.png',
   },
 };
 
+/* Organization schema — emitted on every page from the root layout so
+   Google can attach the brand entity to any landing surface. Listing
+   pages additionally emit Product schema inline. */
+const organizationJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  name: 'GETX',
+  url: SITE_URL,
+  logo: `${SITE_URL}/logo.png`,
+  sameAs: [
+    'https://twitter.com/getxgg',
+    'https://discord.gg/getx',
+  ],
+  description:
+    'The premium gaming marketplace. Verified sellers, escrow-protected orders, sub-10-minute delivery.',
+};
+
+const websiteJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'WebSite',
+  name: 'GETX',
+  url: SITE_URL,
+  potentialAction: {
+    '@type': 'SearchAction',
+    target: `${SITE_URL}/games/pokemon-go/accounts?search={search_term_string}`,
+    'query-input': 'required name=search_term_string',
+  },
+};
+
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${poppins.variable} ${poppinsBody.variable} ${jetbrains.variable}`} suppressHydrationWarning>
+      <head>
+        {/* JSON-LD structured data — emits Organization + WebSite
+            schemas every page so Google can attach brand entities and
+            sitelinks search box. Listing pages additionally inject
+            Product schema locally. */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
+        />
+      </head>
       <body className="antialiased overflow-x-hidden" suppressHydrationWarning>
         {/* Skip-to-content link — first focusable element on every
             page so keyboard users can bypass the header tier 1-3 nav
@@ -70,6 +120,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <CustomCursorLoader />
           </TooltipProvider>
         </ThemeProvider>
+        {/* Cookie consent gate — the banner stays visible until the
+            user picks Accept or Reject, and the wrapper only mounts
+            `<Analytics />` + `<SpeedInsights />` after explicit
+            opt-in. Essential auth cookies are exempt under PECR
+            Reg 6(4)(b) so they're never gated by this component. */}
+        <CookieConsent />
       </body>
     </html>
   );

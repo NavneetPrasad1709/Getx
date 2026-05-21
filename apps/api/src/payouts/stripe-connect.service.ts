@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { firstOrigin } from '../common/config-helpers';
 
 /* StripeConnectService — Express seller-onboarding wrapper.
 
@@ -80,8 +81,7 @@ export class StripeConnectService {
       chargesEnabled: user.stripeConnectChargesEnabled,
       payoutsEnabled: user.stripeConnectPayoutsEnabled,
       detailsSubmitted: user.stripeConnectDetailsSubmitted,
-      onboardedAt:
-        user.stripeConnectOnboardedAt?.toISOString() ?? null,
+      onboardedAt: user.stripeConnectOnboardedAt?.toISOString() ?? null,
     };
   }
 
@@ -137,9 +137,7 @@ export class StripeConnectService {
     if (!resp.ok) {
       const text = await resp.text();
       this.logger.error(`Stripe Connect account create failed: ${text}`);
-      throw new BadRequestException(
-        'Failed to create Stripe Connect account',
-      );
+      throw new BadRequestException('Failed to create Stripe Connect account');
     }
     const data = (await resp.json()) as StripeAccountResponse;
     await this.prisma.user.update({
@@ -170,8 +168,7 @@ export class StripeConnectService {
     if (!this.secretKey) {
       /* Mock — just bounce the seller to the return URL. Lets us click
          through the flow in dev without a real Stripe key. */
-      const webUrl =
-        this.config.get<string>('WEB_URL') ?? 'http://localhost:3000';
+      const webUrl = firstOrigin(this.config, 'WEB_URL', 'http://localhost:3000');
       return {
         url: `${webUrl}${returnPath}?mock=1`,
         expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
@@ -235,9 +232,7 @@ export class StripeConnectService {
         stripeConnectChargesEnabled: chargesEnabled,
         stripeConnectPayoutsEnabled: payoutsEnabled,
         stripeConnectDetailsSubmitted: detailsSubmitted,
-        ...(justOnboarded
-          ? { stripeConnectOnboardedAt: new Date() }
-          : {}),
+        ...(justOnboarded ? { stripeConnectOnboardedAt: new Date() } : {}),
       },
     });
 

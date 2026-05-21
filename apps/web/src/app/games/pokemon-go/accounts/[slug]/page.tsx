@@ -3,8 +3,9 @@
 import * as React from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Button } from '@getx/ui';
+import { Button, toast } from '@getx/ui';
 import { Header } from '@/components/header';
+import { gateCheckout } from '@/lib/feature-flags';
 import { LandingFooter } from '@/components/landing/landing-footer';
 import { useListing, useRelatedListings } from '@/hooks/use-listings';
 import {
@@ -38,7 +39,7 @@ export default function AccountDetailPage() {
   const { data: related } = useRelatedListings(slug);
   const [checkoutOpen, setCheckoutOpen] = React.useState(false);
 
-  const onBuy = () => setCheckoutOpen(true);
+  const onBuy = gateCheckout(() => setCheckoutOpen(true), toast);
 
   if (isLoading) {
     return (

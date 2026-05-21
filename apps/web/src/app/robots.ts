@@ -1,6 +1,9 @@
 import type { MetadataRoute } from 'next';
 
-const WEB_URL = process.env.NEXT_PUBLIC_WEB_URL ?? 'https://getx.gg';
+const WEB_URL =
+  process.env.NEXT_PUBLIC_WEB_URL ??
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  'https://www.getx.live';
 
 export default function robots(): MetadataRoute.Robots {
   return {
