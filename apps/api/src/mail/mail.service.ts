@@ -199,22 +199,16 @@ export class MailService {
     const cards = params.matches
       .slice(0, 3)
       .map((m) => {
-        const cover = m.images?.[0]
-          ? this.escapeHtml(m.images[0])
-          : '';
+        const cover = m.images?.[0] ? this.escapeHtml(m.images[0]) : '';
         const seg =
           m.tabType === 'TOP_UPS'
             ? 'top-ups'
             : m.tabType === 'ITEMS'
               ? 'items'
               : 'accounts';
-        const href = this.escapeHtml(
-          `${stripQuery(params.viewAllUrl)}/${m.slug ?? m.id}`,
-        );
-        const overrideHref = this.escapeHtml(
+        const finalHref = this.escapeHtml(
           `${trimTrailingSlash(stripQuery(params.viewAllUrl).replace(/\/[^/]+$/, ''))}/${seg}/${m.slug ?? m.id}`,
         );
-        const finalHref = overrideHref;
         const priceLine = formatMoney(m.price, m.currency);
         return `
           <td style="width:33%;padding:0 6px;vertical-align:top;">

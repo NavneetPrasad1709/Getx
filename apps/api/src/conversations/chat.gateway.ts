@@ -18,6 +18,7 @@ import {
   SocketRateLimiter,
   type SocketRateLimitEvent,
 } from './socket-rate-limiter';
+import { parseOriginList } from '../common/config-helpers';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -35,10 +36,12 @@ interface TypingPayload {
 // Decorator config is read at class-definition time, before DI runs, so the
 // allowlist must be sourced from process.env (not ConfigService). The HTTP
 // CORS in main.ts uses the same env vars, so the gateway stays aligned.
+// Each env var may be a CSV of origins; parseOriginList flattens them so
+// origin equality matches a single host, not the comma-joined blob.
 const WS_ALLOWED_ORIGINS = [
-  process.env.WEB_URL ?? 'http://localhost:3000',
-  process.env.SELLER_URL ?? 'http://localhost:3001',
-  process.env.ADMIN_URL ?? 'http://localhost:3002',
+  ...parseOriginList(process.env.WEB_URL, 'http://localhost:3000'),
+  ...parseOriginList(process.env.SELLER_URL, 'http://localhost:3001'),
+  ...parseOriginList(process.env.ADMIN_URL, 'http://localhost:3002'),
 ];
 
 @Injectable()
@@ -93,6 +96,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const wasOnline = sockets.size > 0;
       sockets.add(client.id);
       this.userSockets.set(payload.sub, sockets);
+
+      /* Auto-join a per-user room so the server can push lifecycle
+         events (`order:paid`, `order:delivered`, `dispute:opened`, …)
+         to every device the user has open without addressing each
+         socket id individually. The room name is the user id so any
+         service can broadcast via `broadcastToUser(userId, event, data)`. */
+      await client.join(`user:${payload.sub}`);
 
       /* Broadcast `online` only on the first socket per user — additional
          tabs from the same user don't re-fire the event. */
@@ -295,6 +305,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     data: unknown,
   ) {
     this.server.to(`conv:${conversationId}`).emit(event, data);
+  }
+
+  /**
+   * Push an event to every device the user currently has open. Backed
+   * by the `user:${userId}` room every authenticated socket auto-joins.
+   * Used for lifecycle pushes (`order:paid`, `order:confirmed`,
+   * `dispute:opened`, …) so the seller/buyer UI can invalidate stale
+   * lists without polling.
+   */
+  broadcastToUser(userId: string, event: string, data: unknown) {
+    this.server.to(`user:${userId}`).emit(event, data);
   }
 
   isUserOnline(userId: string): boolean {

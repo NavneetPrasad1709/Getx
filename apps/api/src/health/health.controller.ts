@@ -13,12 +13,30 @@ export class HealthController {
 
   @Public()
   @Get()
-  check() {
+  async check() {
+    // Fast DB ping so Railway's healthcheck doubles as a Neon warm-up.
+    // We swallow errors and emit `ok: false` rather than throwing — a
+    // transient DB hiccup should NOT cause Railway to recycle the pod
+    // (the pod restart wouldn't fix the DB anyway). Uptime monitors
+    // looking for `"ok": true` will still spot the degraded state.
+    let dbOk = false;
+    let dbLatencyMs: number | null = null;
+    const t0 = Date.now();
+    try {
+      await this.prisma.$queryRaw`SELECT 1`;
+      dbOk = true;
+      dbLatencyMs = Date.now() - t0;
+    } catch {
+      dbLatencyMs = Date.now() - t0;
+    }
+
     return {
-      status: 'ok' as const,
+      ok: dbOk,
+      status: dbOk ? ('ok' as const) : ('degraded' as const),
       timestamp: new Date().toISOString(),
       version: process.env.npm_package_version ?? '1.0.0',
       service: 'getx-api',
+      db: { ok: dbOk, latencyMs: dbLatencyMs },
     };
   }
 

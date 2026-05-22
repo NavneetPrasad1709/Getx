@@ -74,7 +74,9 @@ export class AddressesService {
           ...(dto.line2 !== undefined ? { line2: dto.line2 } : {}),
           ...(dto.city !== undefined ? { city: dto.city } : {}),
           ...(dto.state !== undefined ? { state: dto.state } : {}),
-          ...(dto.postalCode !== undefined ? { postalCode: dto.postalCode } : {}),
+          ...(dto.postalCode !== undefined
+            ? { postalCode: dto.postalCode }
+            : {}),
           ...(dto.country !== undefined ? { country: dto.country } : {}),
           ...(dto.label !== undefined ? { label: dto.label } : {}),
           ...(dto.taxId !== undefined ? { taxId: dto.taxId } : {}),

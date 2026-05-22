@@ -64,9 +64,9 @@ export class PayoutsController {
   }
 
   @Get('connect/status')
-  status(@CurrentUser('id') userId: string): ReturnType<
-    StripeConnectService['getStatus']
-  > {
+  status(
+    @CurrentUser('id') userId: string,
+  ): ReturnType<StripeConnectService['getStatus']> {
     return this.connect.getStatus(userId);
   }
 

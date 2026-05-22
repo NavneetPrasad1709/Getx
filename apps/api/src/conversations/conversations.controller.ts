@@ -103,7 +103,7 @@ export class ConversationsController {
   ): Promise<ConversationDetail> {
     const listingId =
       typeof body === 'object' && body !== null && 'listingId' in body
-        ? String((body as { listingId: unknown }).listingId)
+        ? String(body.listingId)
         : null;
     if (!listingId) {
       throw new BadRequestException('listingId required');

@@ -34,7 +34,11 @@ export class WalletController {
   apply(
     @CurrentUser('id') userId: string,
     @Body() body: unknown,
-  ): Promise<{ walletApplied: number; newBalance: number; chargeable: number }> {
+  ): Promise<{
+    walletApplied: number;
+    newBalance: number;
+    chargeable: number;
+  }> {
     const dto = ApplyWalletSchema.parse(body);
     return this.wallet.applyToOrder(userId, dto);
   }

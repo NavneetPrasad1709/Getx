@@ -268,6 +268,7 @@ export class ConversationsService {
         status: 'ACTIVE',
       },
       orderBy: [{ lastMessageAt: 'desc' }, { createdAt: 'desc' }],
+      take: 100,
       include: LIST_INCLUDE,
     });
   }

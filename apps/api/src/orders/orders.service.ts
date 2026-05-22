@@ -42,7 +42,15 @@ const DETAIL_INCLUDE = {
     },
   },
   productListing: {
-    select: { id: true, slug: true, sku: true, title: true, images: true, status: true, deletedAt: true },
+    select: {
+      id: true,
+      slug: true,
+      sku: true,
+      title: true,
+      images: true,
+      status: true,
+      deletedAt: true,
+    },
   },
   customRequest: {
     select: { id: true, requestNumber: true, title: true, tabType: true },
@@ -154,25 +162,65 @@ export class OrdersService {
       throw new BadRequestException('Insufficient stock');
     }
 
-    return this.createOrder({
-      buyerId,
-      sellerId: listing.sellerId,
-      listingId: listing.id,
-      customRequestId: null,
-      offerId: null,
-      basePrice: listing.price,
-      quantity: dto.quantity,
-      currency: listing.currency,
-      snapshotTitle: listing.title,
-      snapshot: {
-        kind: 'listing',
-        title: listing.title,
-        sku: listing.sku,
-        price: listing.price,
-        attributes: listing.attributes as Prisma.InputJsonValue,
-        images: listing.images,
-      },
-    });
+    /* Atomic stock reservation — `updateMany` with the stock predicate
+       inside the WHERE clause prevents the TOCTOU race where two
+       concurrent buyers both pass the `listing.stock < dto.quantity`
+       check above. updateMany returns count=0 if the row no longer
+       satisfies the predicate (sold out by a concurrent buyer); we
+       roll the order back by throwing before creation. -1 stock means
+       unlimited and skips reservation entirely. */
+    if (listing.stock !== -1) {
+      const reserve = await this.prisma.productListing.updateMany({
+        where: {
+          id: listing.id,
+          status: 'ACTIVE',
+          deletedAt: null,
+          stock: { gte: dto.quantity },
+        },
+        data: { stock: { decrement: dto.quantity } },
+      });
+      if (reserve.count === 0) {
+        throw new BadRequestException('Insufficient stock');
+      }
+    }
+
+    try {
+      return await this.createOrder({
+        buyerId,
+        sellerId: listing.sellerId,
+        listingId: listing.id,
+        customRequestId: null,
+        offerId: null,
+        basePrice: listing.price,
+        quantity: dto.quantity,
+        currency: listing.currency,
+        snapshotTitle: listing.title,
+        snapshot: {
+          kind: 'listing',
+          title: listing.title,
+          sku: listing.sku,
+          price: listing.price,
+          attributes: listing.attributes as Prisma.InputJsonValue,
+          images: listing.images,
+        },
+      });
+    } catch (err) {
+      /* Restore the reserved stock if the order row itself failed to
+         insert — otherwise we'd leak inventory. */
+      if (listing.stock !== -1) {
+        await this.prisma.productListing
+          .update({
+            where: { id: listing.id },
+            data: { stock: { increment: dto.quantity } },
+          })
+          .catch(() => {
+            this.logger.error(
+              `Stock release failed for listing ${listing.id} after createOrder error — manual reconciliation needed.`,
+            );
+          });
+      }
+      throw err;
+    }
   }
 
   async createFromOffer(
@@ -260,6 +308,9 @@ export class OrdersService {
         paymentMetadata: {
           snapshotTitle: params.snapshotTitle,
           snapshot: params.snapshot,
+          /* Reserved quantity — used by processPaymentFailed to
+             restore inventory when the buyer abandons checkout. */
+          quantity: params.quantity,
         },
       },
     });
@@ -534,7 +585,14 @@ export class OrdersService {
     buyerId: string,
     orderId: string,
     dto: {
-      reason: 'NOT_DELIVERED' | 'WRONG_ITEM' | 'ACCOUNT_RECOVERED' | 'FRAUDULENT' | 'POOR_QUALITY' | 'COMMUNICATION_ISSUE' | 'OTHER';
+      reason:
+        | 'NOT_DELIVERED'
+        | 'WRONG_ITEM'
+        | 'ACCOUNT_RECOVERED'
+        | 'FRAUDULENT'
+        | 'POOR_QUALITY'
+        | 'COMMUNICATION_ISSUE'
+        | 'OTHER';
       description: string;
       evidence: string[];
     },
@@ -560,7 +618,10 @@ export class OrdersService {
     }
 
     const existing = await this.prisma.dispute.findFirst({
-      where: { orderId, status: { in: ['OPEN', 'REVIEWING', 'AWAITING_RESPONSE'] } },
+      where: {
+        orderId,
+        status: { in: ['OPEN', 'REVIEWING', 'AWAITING_RESPONSE'] },
+      },
     });
     if (existing) {
       throw new BadRequestException('A dispute is already open on this order');
@@ -641,6 +702,10 @@ export class OrdersService {
     return this.prisma.order.findMany({
       where,
       orderBy: { createdAt: 'desc' },
+      // Defensive cap until /profile/orders ships proper pagination — heavy
+      // buyers/sellers won't blow up the server but will see only the most
+      // recent 100 entries. Tracked as Phase 2 follow-up (paginate listMyOrders).
+      take: 100,
       include: LIST_INCLUDE,
     });
   }
@@ -660,10 +725,14 @@ export class OrdersService {
         status: { in: ['DELIVERED', 'PAID', 'IN_PROGRESS'] },
         disputes: {
           none: {
-            status: { in: ['OPEN', 'REVIEWING', 'AWAITING_RESPONSE', 'ESCALATED'] },
+            status: {
+              in: ['OPEN', 'REVIEWING', 'AWAITING_RESPONSE', 'ESCALATED'],
+            },
           },
         },
       },
+      // Bounded batch — anything past this rolls into the next cron tick.
+      take: 500,
       select: { id: true, orderNumber: true },
     });
 

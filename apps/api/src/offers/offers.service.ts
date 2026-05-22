@@ -217,6 +217,7 @@ export class OffersService {
     return this.prisma.offer.findMany({
       where: { sellerId },
       orderBy: { createdAt: 'desc' },
+      take: 100,
       include: MY_OFFERS_INCLUDE,
     });
   }
@@ -231,7 +232,8 @@ export class OffersService {
     });
     if (!offer) throw new NotFoundException('Offer not found');
 
-    const firstName = (offer.buyer.name ?? '').trim().split(/\s+/)[0] || 'Buyer';
+    const firstName =
+      (offer.buyer.name ?? '').trim().split(/\s+/)[0] || 'Buyer';
     const { buyer: _b, ...rest } = offer;
     return {
       ...rest,

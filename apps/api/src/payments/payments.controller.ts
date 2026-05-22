@@ -14,14 +14,21 @@ import {
   Res,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { z } from 'zod';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { PaymentsService } from './payments.service';
 import type { ProviderName } from './providers/payment.interface';
+import { firstOriginFromCsv } from '../common/config-helpers';
 
 interface RawBodyRequest extends Request {
   rawBody?: Buffer;
 }
+
+const MockPaySchema = z.object({
+  sessionId: z.string().min(1).max(200),
+  orderId: z.string().min(1).max(200),
+});
 
 /* Minimal HTML attribute/text escaper for the mock checkout template.
    Mock pages are dev-only but XSS-safe-by-default is still the rule. */
@@ -96,7 +103,7 @@ export class PaymentsController {
   ) {
     assertNonProd();
 
-    const webUrl = process.env.WEB_URL ?? 'http://localhost:3000';
+    const webUrl = firstOriginFromCsv(process.env.WEB_URL, 'http://localhost:3000');
     const dollars = ((parseInt(amount, 10) || 0) / 100).toFixed(2);
     const safeSession = escapeHtml(sessionId);
     const safeOrder = escapeHtml(orderId);
@@ -139,19 +146,21 @@ export class PaymentsController {
    */
   @Post('mock-pay')
   async mockPay(
-    @Body() body: { sessionId: string; orderId: string },
+    @Body() rawBody: unknown,
     @CurrentUser('id') userId: string,
     @Res() res: Response,
   ) {
     assertNonProd();
     if (!userId) throw new ForbiddenException();
 
+    const body = MockPaySchema.parse(rawBody);
+
     await this.payments.simulateMockPayment(
       body.sessionId,
       body.orderId,
       userId,
     );
-    const webUrl = process.env.WEB_URL ?? 'http://localhost:3000';
+    const webUrl = firstOriginFromCsv(process.env.WEB_URL, 'http://localhost:3000');
     res.redirect(`${webUrl}/orders/${body.orderId}?payment=success`);
   }
 

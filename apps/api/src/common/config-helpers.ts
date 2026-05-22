@@ -16,10 +16,31 @@ export function firstOrigin(
   key: 'WEB_URL' | 'SELLER_URL' | 'ADMIN_URL',
   fallback: string,
 ): string {
-  const raw = config.get<string>(key) ?? '';
-  const first = raw
+  return firstOriginFromCsv(config.get<string>(key), fallback);
+}
+
+/* process.env variant for module-load-time use (decorator metadata, etc.)
+   where ConfigService isn't available yet. */
+export function firstOriginFromCsv(
+  raw: string | undefined,
+  fallback: string,
+): string {
+  const first = (raw ?? '')
     .split(',')
     .map((s) => s.trim())
     .find((s) => s.length > 0);
   return first ?? fallback;
+}
+
+/* Expands a CSV env value into the flat list of trimmed origins. Used by
+   CORS allowlists that need each origin separately. */
+export function parseOriginList(
+  raw: string | undefined,
+  fallback: string,
+): string[] {
+  const parts = (raw ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  return parts.length > 0 ? parts : [fallback];
 }

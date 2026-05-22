@@ -37,12 +37,54 @@ interface RankGate {
 }
 
 const LADDER: RankGate[] = [
-  { rank: 'ROOKIE', xp: 0, orders: 0, rating: 0, needsKyc: false, bonusPoints: 0 },
-  { rank: 'RISING', xp: 100, orders: 1, rating: 0, needsKyc: true, bonusPoints: 100 },
-  { rank: 'TRUSTED', xp: 500, orders: 10, rating: 4.5, needsKyc: true, bonusPoints: 250 },
-  { rank: 'PRO', xp: 2_000, orders: 50, rating: 4.7, needsKyc: true, bonusPoints: 500 },
-  { rank: 'ELITE', xp: 10_000, orders: 200, rating: 4.85, needsKyc: true, bonusPoints: 1_000 },
-  { rank: 'LEGEND', xp: 50_000, orders: 1_000, rating: 4.9, needsKyc: false, bonusPoints: 2_500 },
+  {
+    rank: 'ROOKIE',
+    xp: 0,
+    orders: 0,
+    rating: 0,
+    needsKyc: false,
+    bonusPoints: 0,
+  },
+  {
+    rank: 'RISING',
+    xp: 100,
+    orders: 1,
+    rating: 0,
+    needsKyc: true,
+    bonusPoints: 100,
+  },
+  {
+    rank: 'TRUSTED',
+    xp: 500,
+    orders: 10,
+    rating: 4.5,
+    needsKyc: true,
+    bonusPoints: 250,
+  },
+  {
+    rank: 'PRO',
+    xp: 2_000,
+    orders: 50,
+    rating: 4.7,
+    needsKyc: true,
+    bonusPoints: 500,
+  },
+  {
+    rank: 'ELITE',
+    xp: 10_000,
+    orders: 200,
+    rating: 4.85,
+    needsKyc: true,
+    bonusPoints: 1_000,
+  },
+  {
+    rank: 'LEGEND',
+    xp: 50_000,
+    orders: 1_000,
+    rating: 4.9,
+    needsKyc: false,
+    bonusPoints: 2_500,
+  },
 ];
 
 @Injectable()
@@ -76,7 +118,7 @@ export class RankService {
     for (const u of rows) {
       const tier = u.verifiedTier;
       if (!tier && u.totalSales === 0) continue;
-      const mappedRank = tier ? TIER_MAP[tier] ?? 'ROOKIE' : 'ROOKIE';
+      const mappedRank = tier ? (TIER_MAP[tier] ?? 'ROOKIE') : 'ROOKIE';
       const baselineXp = Math.min(u.totalSales * 10, 999_999);
       if (mappedRank === 'ROOKIE' && baselineXp === 0) continue;
       await this.prisma.user.update({
@@ -189,10 +231,7 @@ export class RankService {
     const candidates = await this.prisma.user.findMany({
       where: {
         status: 'ACTIVE',
-        OR: [
-          { rankUpdatedAt: { lt: oneHourAgo } },
-          { rank: 'ROOKIE' },
-        ],
+        OR: [{ rankUpdatedAt: { lt: oneHourAgo } }, { rank: 'ROOKIE' }],
       },
       select: {
         id: true,
@@ -218,7 +257,8 @@ export class RankService {
         continue;
       }
 
-      const isPromotion = LADDER.findIndex((g) => g.rank === newRank) >
+      const isPromotion =
+        LADDER.findIndex((g) => g.rank === newRank) >
         LADDER.findIndex((g) => g.rank === u.rank);
       if (!isPromotion) {
         /* Never demote — manual admin action only. Just bump cursor. */
@@ -239,8 +279,7 @@ export class RankService {
           where: { id: u.id },
           select: { loyaltyPoints: true },
         });
-        const balanceAfter =
-          (before?.loyaltyPoints ?? 0) + gate.bonusPoints;
+        const balanceAfter = (before?.loyaltyPoints ?? 0) + gate.bonusPoints;
 
         await tx.user.update({
           where: { id: u.id },

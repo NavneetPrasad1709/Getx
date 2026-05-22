@@ -125,11 +125,7 @@ export class LoyaltyService {
           createdAt: { gte: since },
           points: { gt: 0 },
           type: {
-            in: [
-              'EARNED_PURCHASE',
-              'EARNED_REVIEW',
-              'EARNED_REFERRAL',
-            ],
+            in: ['EARNED_PURCHASE', 'EARNED_REVIEW', 'EARNED_REFERRAL'],
           },
         },
         _sum: { points: true },
@@ -162,9 +158,7 @@ export class LoyaltyService {
         description: params.description,
         orderId: params.orderId ?? null,
         referralId: params.referralId ?? null,
-        expiresAt: params.noExpiry
-          ? null
-          : new Date(Date.now() + EXPIRY_MS),
+        expiresAt: params.noExpiry ? null : new Date(Date.now() + EXPIRY_MS),
       },
     });
     return credit;
@@ -257,7 +251,9 @@ export class LoyaltyService {
       if (!order) throw new NotFoundException('Order not found');
       if (order.buyerId !== userId) throw new ForbiddenException();
       if (order.status !== 'PENDING') {
-        throw new BadRequestException('Points can only be applied before payment');
+        throw new BadRequestException(
+          'Points can only be applied before payment',
+        );
       }
       if (order.walletApplied > 0) {
         throw new BadRequestException(
@@ -276,7 +272,9 @@ export class LoyaltyService {
       });
       if (!user) throw new NotFoundException();
 
-      const maxByCap = Math.floor((order.amount * REDEEM_CAP_PCT) / POINT_TO_USD);
+      const maxByCap = Math.floor(
+        (order.amount * REDEEM_CAP_PCT) / POINT_TO_USD,
+      );
       const applied = Math.min(pointsRequested, user.loyaltyPoints, maxByCap);
       if (applied <= 0) {
         throw new BadRequestException('Nothing to redeem');
@@ -392,7 +390,10 @@ export class LoyaltyService {
   /* Daily expiry sweep — earnings past 12 months expire. Cron runs
      03:30 UTC after the FX cron. Per-row EXPIRED entry preserves audit. */
   @Cron('30 3 * * *', { name: 'loyaltyExpirySweep' })
-  async expireOldPoints(): Promise<{ usersAffected: number; pointsExpired: number }> {
+  async expireOldPoints(): Promise<{
+    usersAffected: number;
+    pointsExpired: number;
+  }> {
     const now = new Date();
 
     /* Find unexpired earn rows whose expiresAt has passed. Group by user

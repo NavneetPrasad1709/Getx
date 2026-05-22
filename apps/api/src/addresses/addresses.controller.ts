@@ -13,10 +13,7 @@ import { Throttle } from '@nestjs/throttler';
 import type { Address } from '@getx/database';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AddressesService } from './addresses.service';
-import {
-  CreateAddressSchema,
-  UpdateAddressSchema,
-} from './dto/address.dto';
+import { CreateAddressSchema, UpdateAddressSchema } from './dto/address.dto';
 
 @Controller('addresses')
 export class AddressesController {

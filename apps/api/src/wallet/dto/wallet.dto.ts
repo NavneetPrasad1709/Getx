@@ -19,7 +19,7 @@ const UpiWithdrawSchema = z.object({
     .string()
     .min(3)
     .max(100)
-    .regex(/^[\w.\-]+@[\w.\-]+$/i, 'Invalid UPI ID'),
+    .regex(/^[\w.-]+@[\w.-]+$/i, 'Invalid UPI ID'),
 });
 
 const PaypalWithdrawSchema = z.object({

@@ -175,8 +175,7 @@ export class StripeConnectService {
       };
     }
 
-    const webUrl =
-      this.config.get<string>('WEB_URL') ?? 'http://localhost:3000';
+    const webUrl = firstOrigin(this.config, 'WEB_URL', 'http://localhost:3000');
     const form = new URLSearchParams();
     form.set('account', accountId);
     form.set('refresh_url', `${webUrl}${refreshPath}`);

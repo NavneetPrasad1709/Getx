@@ -10,13 +10,10 @@ export const SendMessageSchema = z
     attachments: z.array(safeImageUrl()).max(4).default([]),
     type: z.enum(['TEXT', 'IMAGE']).default('TEXT'),
   })
-  .refine(
-    (d) => d.content.trim().length > 0 || d.attachments.length > 0,
-    {
-      message: 'Message must include text or at least one attachment',
-      path: ['content'],
-    },
-  );
+  .refine((d) => d.content.trim().length > 0 || d.attachments.length > 0, {
+    message: 'Message must include text or at least one attachment',
+    path: ['content'],
+  });
 
 export const StartConversationSchema = z
   .object({

@@ -1,9 +1,11 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import type { Prisma } from '@getx/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
@@ -488,11 +490,15 @@ export class ListingsService {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '')
       .slice(0, 80);
+    /* Slug is generated as `<baseSlug>-<randomSuffix>` from the second
+       attempt onward. The random suffix means two concurrent inserts of
+       the same title don't collide on the same `-2` — they pick
+       independent suffixes. The actual P2002 still gets caught below in
+       the create call as a final safety net. */
     let slug = baseSlug;
-    let attempt = 1;
-    while (await this.prisma.productListing.findUnique({ where: { slug } })) {
-      attempt += 1;
-      slug = `${baseSlug}-${attempt}`;
+    const randomSuffix = () => randomBytes(3).toString('hex'); // 6 hex chars
+    if (await this.prisma.productListing.findUnique({ where: { slug } })) {
+      slug = `${baseSlug}-${randomSuffix()}`;
     }
 
     /* Detect "first listing" before insert so we know whether to award
@@ -503,56 +509,74 @@ export class ListingsService {
     });
     const isFirstPublishedListing = dto.publish && existingPublished === 0;
 
-    const listing = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.productListing.create({
-        data: {
-          sku,
-          slug,
-          sellerId,
-          gameId: game.id,
-          tabType: dto.tabType,
-          productType: dto.productType,
-          title: dto.title,
-          description: dto.description,
-          price: dto.price,
-          currency: dto.currency,
-          originalPrice: dto.originalPrice,
-          discountPercent: dto.originalPrice
-            ? Math.round(
-                ((dto.originalPrice - dto.price) / dto.originalPrice) * 100,
-              )
-            : null,
-          stock: dto.stock,
-          images: dto.images,
-          videoUrl: dto.videoUrl,
-          attributes: dto.attributes as Prisma.InputJsonValue,
-          deliveryType: dto.deliveryType,
-          deliveryTime: dto.deliveryTime,
-          searchTags: dto.searchTags,
-          status: dto.publish ? 'ACTIVE' : 'DRAFT',
-        },
-      });
+    /* Up to 3 retries on slug collision — first uses baseSlug or
+       baseSlug-<rand>, retries re-roll the random suffix. */
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await this.prisma.$transaction(async (tx) => {
+          const created = await tx.productListing.create({
+            data: {
+              sku,
+              slug,
+              sellerId,
+              gameId: game.id,
+              tabType: dto.tabType,
+              productType: dto.productType,
+              title: dto.title,
+              description: dto.description,
+              price: dto.price,
+              currency: dto.currency,
+              originalPrice: dto.originalPrice,
+              discountPercent: dto.originalPrice
+                ? Math.round(
+                    ((dto.originalPrice - dto.price) / dto.originalPrice) * 100,
+                  )
+                : null,
+              stock: dto.stock,
+              images: dto.images,
+              videoUrl: dto.videoUrl,
+              attributes: dto.attributes as Prisma.InputJsonValue,
+              deliveryType: dto.deliveryType,
+              deliveryTime: dto.deliveryTime,
+              searchTags: dto.searchTags,
+              status: dto.publish ? 'ACTIVE' : 'DRAFT',
+            },
+          });
 
-      if (dto.publish) {
-        await tx.game.update({
-          where: { id: game.id },
-          data: { totalListings: { increment: 1 } },
+          if (dto.publish) {
+            await tx.game.update({
+              where: { id: game.id },
+              data: { totalListings: { increment: 1 } },
+            });
+          }
+
+          if (isFirstPublishedListing) {
+            await this.loyalty.earn(tx, {
+              userId: sellerId,
+              type: 'EARNED_FIRST_LISTING',
+              points: 50,
+              description: 'First listing published — welcome bonus',
+            });
+          }
+
+          return created;
         });
+      } catch (err) {
+        const code =
+          err && typeof err === 'object' && 'code' in err
+            ? (err as { code?: unknown }).code
+            : undefined;
+        if (code === 'P2002') {
+          slug = `${baseSlug}-${randomSuffix()}`;
+          continue;
+        }
+        throw err;
       }
+    }
 
-      if (isFirstPublishedListing) {
-        await this.loyalty.earn(tx, {
-          userId: sellerId,
-          type: 'EARNED_FIRST_LISTING',
-          points: 50,
-          description: 'First listing published — welcome bonus',
-        });
-      }
-
-      return created;
-    });
-
-    return listing;
+    throw new ConflictException(
+      'Could not allocate a unique slug after multiple attempts — retry.',
+    );
   }
 
   async updateListing(
@@ -636,6 +660,7 @@ export class ListingsService {
     return this.prisma.productListing.findMany({
       where: { sellerId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
+      take: 100,
       select: MY_LIST_SELECT,
     });
   }

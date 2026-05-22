@@ -51,7 +51,9 @@ export class PaymentMethodsService {
     id: string,
     dto: UpdatePaymentMethodDto,
   ): Promise<PaymentMethod> {
-    const existing = await this.prisma.paymentMethod.findUnique({ where: { id } });
+    const existing = await this.prisma.paymentMethod.findUnique({
+      where: { id },
+    });
     if (!existing) throw new NotFoundException();
     if (existing.userId !== userId) throw new ForbiddenException();
 
@@ -74,7 +76,9 @@ export class PaymentMethodsService {
   }
 
   async remove(userId: string, id: string): Promise<{ success: true }> {
-    const existing = await this.prisma.paymentMethod.findUnique({ where: { id } });
+    const existing = await this.prisma.paymentMethod.findUnique({
+      where: { id },
+    });
     if (!existing) throw new NotFoundException();
     if (existing.userId !== userId) throw new ForbiddenException();
 

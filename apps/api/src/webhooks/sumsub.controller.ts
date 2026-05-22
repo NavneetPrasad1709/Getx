@@ -12,18 +12,25 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'crypto';
 import type { Request } from 'express';
+import { z } from 'zod';
 import { Public } from '../auth/decorators/public.decorator';
 import { AccountService } from '../account/account.service';
 
-interface SumsubPayload {
-  applicantId: string;
-  externalUserId?: string;
-  type: string;
-  reviewResult?: {
-    reviewAnswer: 'GREEN' | 'RED' | 'YELLOW';
-    rejectLabels?: string[];
-  };
-}
+// Defence-in-depth — even after HMAC verification we still validate the
+// payload shape so an authenticated-but-malformed event can't crash the
+// handler or smuggle unexpected fields into the account service.
+const SumsubPayloadSchema = z.object({
+  applicantId: z.string().min(1).max(200),
+  externalUserId: z.string().max(200).optional(),
+  type: z.string().min(1).max(100),
+  reviewResult: z
+    .object({
+      reviewAnswer: z.enum(['GREEN', 'RED', 'YELLOW']),
+      rejectLabels: z.array(z.string().max(80)).max(40).optional(),
+    })
+    .optional(),
+});
+type SumsubPayload = z.infer<typeof SumsubPayloadSchema>;
 
 /* Public webhook endpoint for Sumsub e-KYC. Sumsub posts applicantReviewed
    when a review finishes; we verify the HMAC signature against
@@ -44,7 +51,7 @@ export class SumsubWebhookController {
   async handle(
     @Headers('x-payload-digest') signature: string | undefined,
     @Headers('x-payload-digest-alg') algo: string | undefined,
-    @Body() body: SumsubPayload,
+    @Body() rawPayload: unknown,
     @Req() req: Request,
   ): Promise<{ ok: true }> {
     const secret = this.config.get<string>('SUMSUB_SECRET_KEY');
@@ -52,10 +59,14 @@ export class SumsubWebhookController {
     if (secret) {
       const rawBody =
         (req as Request & { rawBody?: Buffer }).rawBody?.toString() ??
-        JSON.stringify(body);
+        JSON.stringify(rawPayload);
       const algoUsed = (algo ?? 'HMAC_SHA256_HEX').toUpperCase();
       const expected = createHmac(
-        algoUsed.includes('SHA512') ? 'sha512' : algoUsed.includes('SHA1') ? 'sha1' : 'sha256',
+        algoUsed.includes('SHA512')
+          ? 'sha512'
+          : algoUsed.includes('SHA1')
+            ? 'sha1'
+            : 'sha256',
         secret,
       )
         .update(rawBody)
@@ -73,6 +84,8 @@ export class SumsubWebhookController {
         'SUMSUB_SECRET_KEY missing — accepting webhook without signature verification (dev mode).',
       );
     }
+
+    const body: SumsubPayload = SumsubPayloadSchema.parse(rawPayload);
 
     try {
       await this.account.handleSumsubWebhook(body);

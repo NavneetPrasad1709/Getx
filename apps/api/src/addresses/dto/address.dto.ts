@@ -2,11 +2,7 @@ import { z } from 'zod';
 
 const baseAddressFields = {
   fullName: z.string().min(2).max(120),
-  phone: z
-    .string()
-    .max(20)
-    .optional()
-    .nullable(),
+  phone: z.string().max(20).optional().nullable(),
   line1: z.string().min(3).max(200),
   line2: z.string().max(200).optional().nullable(),
   city: z.string().min(2).max(80),

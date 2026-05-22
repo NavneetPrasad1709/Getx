@@ -1,4 +1,9 @@
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  randomBytes,
+  scryptSync,
+} from 'crypto';
 
 const ALGO = 'aes-256-gcm';
 const IV_BYTES = 12;
@@ -11,12 +16,17 @@ function getKey(): Buffer {
   if (cachedKey) return cachedKey;
   const raw = process.env.PII_ENCRYPTION_KEY;
   if (!raw) {
-    throw new Error('PII_ENCRYPTION_KEY is required to encrypt withdrawal PII.');
+    throw new Error(
+      'PII_ENCRYPTION_KEY is required to encrypt withdrawal PII.',
+    );
   }
   // Accept either a hex 32-byte key directly or derive deterministically via scrypt
   // so operators can rotate between formats without re-encrypting everything.
   const direct = Buffer.from(raw, 'hex');
-  cachedKey = direct.length === KEY_BYTES ? direct : scryptSync(raw, SCRYPT_SALT, KEY_BYTES);
+  cachedKey =
+    direct.length === KEY_BYTES
+      ? direct
+      : scryptSync(raw, SCRYPT_SALT, KEY_BYTES);
   return cachedKey;
 }
 
@@ -30,7 +40,10 @@ function getKey(): Buffer {
 export function encryptPii(plaintext: string): string {
   const iv = randomBytes(IV_BYTES);
   const cipher = createCipheriv(ALGO, getKey(), iv);
-  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const encrypted = Buffer.concat([
+    cipher.update(plaintext, 'utf8'),
+    cipher.final(),
+  ]);
   const tag = cipher.getAuthTag();
   return Buffer.concat([iv, tag, encrypted]).toString('base64');
 }
@@ -45,6 +58,9 @@ export function decryptPii(blob: string): string {
   const ciphertext = buf.subarray(IV_BYTES + TAG_BYTES);
   const decipher = createDecipheriv(ALGO, getKey(), iv);
   decipher.setAuthTag(tag);
-  const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  const decrypted = Buffer.concat([
+    decipher.update(ciphertext),
+    decipher.final(),
+  ]);
   return decrypted.toString('utf8');
 }

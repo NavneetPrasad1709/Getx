@@ -108,10 +108,14 @@ export class WalletService {
       if (!order) throw new NotFoundException('Order not found');
       if (order.buyerId !== userId) throw new ForbiddenException();
       if (order.status !== 'PENDING') {
-        throw new BadRequestException('Wallet credit can only be applied before payment');
+        throw new BadRequestException(
+          'Wallet credit can only be applied before payment',
+        );
       }
       if ((order.walletApplied ?? 0) > 0) {
-        throw new BadRequestException('Wallet credit already applied — remove it first');
+        throw new BadRequestException(
+          'Wallet credit already applied — remove it first',
+        );
       }
       /* Mutex with loyalty points — only one engagement reward per order
          so the spec stays buyer-friendly (no stacking 50% wallet + 50% pts). */
@@ -131,7 +135,9 @@ export class WalletService {
       const maxApplicable = Math.min(user.buyerWallet, cap);
       const applied = Math.min(dto.amount, maxApplicable);
       if (applied <= 0) {
-        throw new BadRequestException('Nothing to apply — balance or cap is zero');
+        throw new BadRequestException(
+          'Nothing to apply — balance or cap is zero',
+        );
       }
 
       const newBalance = user.buyerWallet - applied;
@@ -290,12 +296,23 @@ export class WalletService {
           preferredCurrency: true,
           email: true,
           name: true,
+          kycStatus: true,
           stripeConnectPayoutsEnabled: true,
         },
       });
       if (!user) throw new NotFoundException();
       if (user.buyerWallet < dto.amount) {
         throw new BadRequestException('Insufficient wallet balance');
+      }
+      /* Platform KYC gate — every payout rail (UPI, PayPal, Wise, Bank)
+         requires Sumsub-verified identity before money can leave the
+         platform. Compliance + AML + chargeback-defence; the gate is
+         method-agnostic so a non-KYC user can't cherry-pick the
+         cheapest rail to exfiltrate funds. */
+      if (user.kycStatus !== 'VERIFIED') {
+        throw new ForbiddenException(
+          'KYC verification required before withdrawing funds. Complete identity verification from your profile.',
+        );
       }
       /* International rails (Wise / Bank) require Stripe Connect to be
          onboarded so we can use Stripe-paid-out funds instead of the
@@ -319,7 +336,9 @@ export class WalletService {
         data: { buyerWallet: { decrement: dto.amount } },
       });
 
-      const withdrawalNumber = `WD-${Date.now()}-${Math.floor(Math.random() * 9999)
+      const withdrawalNumber = `WD-${Date.now()}-${Math.floor(
+        Math.random() * 9999,
+      )
         .toString()
         .padStart(4, '0')}`;
 

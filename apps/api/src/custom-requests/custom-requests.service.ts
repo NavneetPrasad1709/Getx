@@ -313,6 +313,7 @@ export class CustomRequestsService {
     return this.prisma.customRequest.findMany({
       where: { buyerId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
+      take: 100,
       include: MY_LIST_INCLUDE,
     });
   }
