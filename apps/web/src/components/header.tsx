@@ -642,9 +642,16 @@ export function Header() {
       {/* TIER 2 — main sticky bar with glass-on-scroll. The background uses
           a translucent color + backdrop-blur once the user scrolls, so the
           bar reads as a premium frosted layer rather than a flat slab. */}
+      {/* overflow-x-clip (not overflow-hidden) so the ambient backdrop
+          stays contained horizontally — keeps the radial blooms from
+          bleeding onto neighbouring sections — while still letting
+          absolute-positioned children like the account dropdown extend
+          vertically below the header. overflow-hidden was clipping the
+          dropdown to header height, so users only saw the email/name
+          panel, never the menu items below. */}
       <header
         className={`
-          relative sticky top-0 z-40 overflow-hidden
+          relative sticky top-0 z-40 overflow-x-clip
           bg-[hsl(var(--background))] border-b border-[hsl(var(--border))]
           transition-shadow duration-300
           ${scrolled ? 'shadow-[0_8px_28px_-12px_hsl(0_0%_0%/0.12)]' : ''}
