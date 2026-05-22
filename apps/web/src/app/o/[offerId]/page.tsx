@@ -15,7 +15,7 @@ import { ShareOfferButton } from '@/components/offers/share-offer-button';
 
 /* Public read-only share view for a custom-request offer.
 
-   Shareable at `https://getx.gg/o/{offerId}`. Buyer info is sanitised to
+   Shareable at `https://getx.live/o/{offerId}`. Buyer info is sanitised to
    first name + country before the page ever renders so a stranger
    stumbling on a shared URL can't fingerprint the buyer. Active offers
    show a "Sign in to respond" CTA; expired/accepted/withdrawn offers
@@ -24,7 +24,7 @@ import { ShareOfferButton } from '@/components/offers/share-offer-button';
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://getx.gg';
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://getx.live';
 
 interface PublicOffer {
   id: string;

@@ -40,7 +40,7 @@ export default function ReferralsPage() {
   }, [loading, isAuthenticated]);
 
   const code = mine?.code ?? '';
-  const shareUrl = `https://getx.gg/r/${code}`;
+  const shareUrl = `https://getx.live/r/${code}`;
 
   const copy = async (what: 'code' | 'link') => {
     const value = what === 'code' ? code : shareUrl;

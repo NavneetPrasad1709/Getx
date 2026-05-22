@@ -41,7 +41,7 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'GETX Seller — sell.getx.gg',
+  title: 'GETX Seller — sell.getx.live',
   description: 'GETX Seller dashboard.',
 };
 

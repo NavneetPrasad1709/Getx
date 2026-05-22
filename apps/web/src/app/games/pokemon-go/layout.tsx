@@ -17,7 +17,7 @@ export const metadata: Metadata = {
     title: 'Pokémon GO marketplace · GETX',
     description:
       'Trainer accounts, PokéCoin packs, items, and boosting. Escrow-protected. Instant delivery on top-ups.',
-    url: 'https://getx.gg/games/pokemon-go',
+    url: 'https://getx.live/games/pokemon-go',
     siteName: 'GETX',
     type: 'website',
   },
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
     description: 'Buy trainer accounts, top-ups, items, and boosting — escrow-protected.',
   },
   alternates: {
-    canonical: 'https://getx.gg/games/pokemon-go',
+    canonical: 'https://getx.live/games/pokemon-go',
   },
 };
 

@@ -172,7 +172,7 @@ export default function ProfilePage() {
         toast.success('KYC sandbox token issued — approve from admin tools.');
         await kyc.refetch();
       } else {
-        toast.message('KYC iframe opening — coming soon to seller.getx.gg');
+        toast.message('KYC iframe opening — coming soon to seller.getx.live');
       }
     } catch (err) {
       const msg =
@@ -381,7 +381,7 @@ export default function ProfilePage() {
               <div className="flex-1 min-w-0">
                 <div className="text-[13.5px] font-semibold">Sign out</div>
                 <div className="text-[11.5px] text-muted-foreground">
-                  Logs you out of seller.getx.gg only
+                  Logs you out of seller.getx.live only
                 </div>
               </div>
               <ChevronRight className="h-4 w-4 text-muted-foreground" />

@@ -160,7 +160,7 @@ export function NotificationBell() {
                   className="flex items-center justify-center gap-1 p-2.5 text-[11.5px] font-semibold text-primary hover:bg-muted/20 transition-colors"
                   onClick={() => setOpen(false)}
                 >
-                  View all on getx.gg
+                  View all on getx.live
                   <ArrowUpRight className="h-3 w-3" />
                 </a>
               </div>

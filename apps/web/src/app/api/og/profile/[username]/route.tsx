@@ -238,7 +238,7 @@ export async function GET(
             color: 'rgba(255,255,255,0.65)',
           }}
         >
-          <div>The global gaming marketplace · getx.gg</div>
+          <div>The global gaming marketplace · getx.live</div>
           <div
             style={{
               padding: '6px 16px',

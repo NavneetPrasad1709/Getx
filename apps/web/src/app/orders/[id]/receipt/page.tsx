@@ -89,7 +89,7 @@ export default function ReceiptPage() {
               GETX
             </div>
             <div className="text-[11px] text-gray-500 mt-0.5">
-              getx.gg · support@getx.live
+              getx.live · support@getx.live
             </div>
           </div>
           <div className="text-right">

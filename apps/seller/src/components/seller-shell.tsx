@@ -571,7 +571,7 @@ function BrandLogo() {
             GETX <span className="text-primary">Seller</span>
           </div>
           <div className="font-mono text-[9px] uppercase tracking-[0.22em] text-muted-foreground">
-            sell.getx.gg
+            sell.getx.live
           </div>
         </div>
       </Link>

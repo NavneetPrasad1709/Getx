@@ -160,7 +160,7 @@ export default function OpengraphImage() {
                 display: 'flex',
               }}
             >
-              getx.gg
+              getx.live
             </div>
           </div>
 

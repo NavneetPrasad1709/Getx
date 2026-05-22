@@ -26,7 +26,7 @@ const SOCIALS = [
   { label: 'X / Twitter', href: 'https://twitter.com/getx_gg', Icon: Twitter },
   { label: 'Discord', href: 'https://discord.gg/getx', Icon: MessageCircle },
   { label: 'YouTube', href: 'https://youtube.com/@getx-gg', Icon: Youtube },
-  { label: 'Instagram', href: 'https://instagram.com/getx.gg', Icon: Instagram },
+  { label: 'Instagram', href: 'https://instagram.com/getx.live', Icon: Instagram },
 ];
 
 const LEGAL_LINKS = [

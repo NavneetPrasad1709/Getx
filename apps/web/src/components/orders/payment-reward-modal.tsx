@@ -49,7 +49,7 @@ export function PaymentRewardModal({ orderId, open, onClose }: PaymentRewardModa
   const [copied, setCopied] = React.useState(false);
 
   const code = mine?.code ?? '';
-  const shareUrl = code ? `https://getx.gg/r/${code}` : '';
+  const shareUrl = code ? `https://getx.live/r/${code}` : '';
 
   const handleUnlock = React.useCallback(() => {
     setUnlocked(true);

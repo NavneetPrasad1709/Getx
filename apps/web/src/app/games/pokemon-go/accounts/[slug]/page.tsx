@@ -92,7 +92,7 @@ export default function AccountDetailPage() {
   const platform = attrString(a, 'platform');
   if (platform) rows.push({ label: 'Platform', value: platform });
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://getx.gg';
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://getx.live';
   const productJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Product',

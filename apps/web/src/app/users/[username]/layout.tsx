@@ -7,7 +7,7 @@ import type { Metadata } from 'next';
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://getx.gg';
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://getx.live';
 
 interface ProfileShape {
   username: string | null;

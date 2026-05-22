@@ -34,7 +34,7 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'GETX Admin — admin.getx.gg',
+  title: 'GETX Admin — admin.getx.live',
   description: 'GETX internal admin console.',
   robots: { index: false, follow: false },
 };

@@ -163,7 +163,7 @@ export default function PrivacyPage() {
             <Section title="Your rights">
               <p>
                 Depending on your location, you have rights to access, correct, export, or delete
-                your personal data. Email privacy@getx.gg to exercise any of these rights. We will
+                your personal data. Email privacy@getx.live to exercise any of these rights. We will
                 verify your identity before responding.
               </p>
             </Section>
@@ -184,7 +184,7 @@ export default function PrivacyPage() {
 
             <Section title="Contact">
               <p>
-                Privacy questions go to privacy@getx.gg, or via the{' '}
+                Privacy questions go to privacy@getx.live, or via the{' '}
                 <Link href="/contact" className="text-primary hover:underline">
                   contact page
                 </Link>

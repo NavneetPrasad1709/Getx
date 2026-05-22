@@ -401,7 +401,7 @@ function Brand() {
             GETX <span className="text-error font-black">ADMIN</span>
           </div>
           <div className="font-mono text-[9px] uppercase tracking-[0.22em] text-muted-foreground">
-            admin.getx.gg
+            admin.getx.live
           </div>
         </div>
       </Link>

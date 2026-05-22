@@ -66,7 +66,7 @@ function LoginForm() {
               <Input
                 {...register('email')}
                 type="email"
-                placeholder="admin@getx.gg"
+                placeholder="admin@getx.live"
                 disabled={loading}
                 autoComplete="email"
               />

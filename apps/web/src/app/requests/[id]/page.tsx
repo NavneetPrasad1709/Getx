@@ -18,7 +18,7 @@ import { ChatButton } from '@/components/chat/chat-button';
 import { TierAsRankBadge } from '@/components/badges/rank-badge';
 import { ShareOfferButton } from '@/components/offers/share-offer-button';
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://getx.gg';
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://getx.live';
 
 function humanizeKey(key: string): string {
   return key

@@ -60,7 +60,7 @@ const COLUMNS: Array<{ heading: string; links: Array<{ label: string; href: stri
 const SOCIALS = [
   { label: 'Twitter', href: 'https://twitter.com/getx_gg', icon: Twitter },
   { label: 'Discord', href: 'https://discord.gg/getx', icon: MessageCircle },
-  { label: 'Instagram', href: 'https://instagram.com/getx.gg', icon: Instagram },
+  { label: 'Instagram', href: 'https://instagram.com/getx.live', icon: Instagram },
   { label: 'YouTube', href: 'https://youtube.com/@getx-gg', icon: Youtube },
 ];
 
