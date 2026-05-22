@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import dynamic from 'next/dynamic';
+import ReactDOM from 'react-dom';
 import { Header } from '@/components/header';
 import { HeroSection } from '@/components/landing/hero-section';
 import { PartnerTrustBand } from '@/components/landing/partner-trust-band';
@@ -63,6 +64,28 @@ export const metadata: Metadata = {
 };
 
 export default function HomePage() {
+  /* LCP optimisation — preload the hero background at the exact
+     resolution next/image will request for mobile + desktop. Lighthouse
+     flagged the hero as the LCP element with priorityHinted=false;
+     ReactDOM.preload injects a <link rel=preload as=image fetchpriority=
+     high imageSrcSet=...> into <head> before React even mounts the
+     image, so the browser starts fetching during HTML parsing instead
+     of after JS hydration. The src matches /games/pokemon-go/
+     pokemongo-game.webp going through next/image. */
+  ReactDOM.preload(
+    '/_next/image?url=%2Fgames%2Fpokemon-go%2Fpokemongo-game.webp&w=640&q=75',
+    {
+      as: 'image',
+      fetchPriority: 'high',
+      imageSrcSet:
+        '/_next/image?url=%2Fgames%2Fpokemon-go%2Fpokemongo-game.webp&w=640&q=75 640w, ' +
+        '/_next/image?url=%2Fgames%2Fpokemon-go%2Fpokemongo-game.webp&w=750&q=75 750w, ' +
+        '/_next/image?url=%2Fgames%2Fpokemon-go%2Fpokemongo-game.webp&w=1080&q=75 1080w, ' +
+        '/_next/image?url=%2Fgames%2Fpokemon-go%2Fpokemongo-game.webp&w=1920&q=75 1920w',
+      imageSizes: '100vw',
+    },
+  );
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Theme-aware gradient backdrop — two layers, one shows per mode
