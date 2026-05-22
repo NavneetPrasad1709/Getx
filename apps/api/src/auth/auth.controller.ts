@@ -121,6 +121,19 @@ export class AuthController {
     return this.auth.me(userId);
   }
 
+  /* Public bootstrap probe — same payload as /auth/me on success, but
+     returns 200 { user: null } for unauthenticated visitors instead of
+     401. Lets the SPA root layout call this on every cold load (logged
+     in or not) without filling the browser devtools / Lighthouse "Best
+     Practices" report with red-flag 401 console errors. /auth/me stays
+     strict for downstream calls that should fail closed. */
+  @Public()
+  @Get('session')
+  @HttpCode(HttpStatus.OK)
+  async session(@Req() req: Request) {
+    return this.auth.session(req);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Patch('me/activate-seller')
   async activateSeller(@CurrentUser('id') userId: string) {

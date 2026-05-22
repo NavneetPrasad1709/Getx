@@ -37,10 +37,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // every other authenticated request still goes through `api`.
   const refetch = async () => {
     try {
-      const res = await fetch(`${API_URL}/auth/me`, { credentials: 'include' });
+      /* /auth/session is the soft sibling of /auth/me — always returns
+         200 with { user: AuthUser | null } so an anonymous landing
+         doesn't surface a red 401 in DevTools (Lighthouse Best
+         Practices used to ding us for it). Authenticated downstream
+         requests still hit /auth/me / /auth/refresh which 401 on
+         expiry as before. */
+      const res = await fetch(`${API_URL}/auth/session`, { credentials: 'include' });
       if (res.ok) {
-        const data = (await res.json()) as AuthUser;
-        setUser(data);
+        const data = (await res.json()) as { user: AuthUser | null };
+        setUser(data.user);
       } else {
         setUser(null);
       }

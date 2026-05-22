@@ -47,10 +47,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // so a 401 here never re-enters the axios interceptor's redirect path.
   const refetch = async () => {
     try {
-      const res = await fetch(`${API_URL}/auth/me`, { credentials: 'include' });
+      const res = await fetch(`${API_URL}/auth/session`, { credentials: 'include' });
       if (res.ok) {
-        const data = (await res.json()) as AuthUser;
-        setUser(data);
+        const data = (await res.json()) as { user: AuthUser | null };
+        setUser(data.user);
       } else {
         setUser(null);
       }

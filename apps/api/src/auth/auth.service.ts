@@ -736,6 +736,36 @@ export class AuthService {
     return user;
   }
 
+  /* Soft session probe — used by the SPA bootstrap. Always returns 200
+     so an anonymous landing visit doesn't produce a red 401 in the
+     console (which Lighthouse flags under Best Practices). Mirrors the
+     JwtAuthGuard's token-resolution order: accessToken cookie first,
+     Authorization: Bearer fallback. Any verification failure (missing,
+     expired, invalid signature, bad shape) collapses to { user: null }
+     — we never differentiate so this endpoint can't be used as a
+     token-validity oracle. */
+  async session(req: Request): Promise<{ user: Awaited<ReturnType<AuthService['me']>> | null }> {
+    const cookies = req.cookies as Record<string, string> | undefined;
+    const cookieToken = cookies?.['accessToken'];
+    const authHeader = req.headers.authorization;
+    const headerToken = authHeader?.startsWith('Bearer ')
+      ? authHeader.slice(7)
+      : undefined;
+    const token = cookieToken ?? headerToken;
+    if (!token) return { user: null };
+
+    try {
+      const payload = await this.jwt.verifyAsync<{ sub: string }>(token, {
+        secret: this.config.get<string>('JWT_ACCESS_SECRET'),
+      });
+      if (!payload?.sub) return { user: null };
+      const user = await this.me(payload.sub);
+      return { user };
+    } catch {
+      return { user: null };
+    }
+  }
+
   async activateSeller(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException();
