@@ -4,13 +4,7 @@ import * as React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Mail, Check, Loader2, Gift } from 'lucide-react';
 import { toast } from '@getx/ui';
-
-/* WaitlistForm — email-capture for coming-soon games.
- *
- * Backend hook lives at /api/waitlist (TODO — currently stubbed with a
- * setTimeout). Once wired, the optimistic UX stays: instant success
- * state, toast for errors, the per-game seed count increments visually.
- */
+import { api } from '@/lib/api';
 
 interface WaitlistFormProps {
   slug: string;
@@ -31,11 +25,8 @@ export function WaitlistForm({ slug, gameName }: WaitlistFormProps) {
     }
     setState('submitting');
 
-    /* Stub for /api/waitlist — replace with real fetch when API ready.
-       Keeping it local-only ensures the UX path is correct before the
-       backend slot exists. */
     try {
-      await new Promise((resolve) => setTimeout(resolve, 700));
+      await api.post('/waitlist/game', { email, game: slug });
       setState('success');
       toast.success(`You're on the ${gameName} waitlist!`);
     } catch {

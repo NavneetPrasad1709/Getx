@@ -58,9 +58,9 @@ const ROWS: Row[] = [
     playerauctions: { verdict: 'partial', note: 'Tiered' },
   },
   {
-    feature: 'Multi-rail checkout',
-    detail: 'Stripe · PayPal · Razorpay (IN)',
-    getx: { verdict: 'yes', note: 'Native' },
+    feature: 'Global checkout',
+    detail: 'Stripe (cards, wallets, UPI, SEPA, more)',
+    getx: { verdict: 'yes', note: 'Stripe-routed' },
     eldorado: { verdict: 'partial', note: 'Stripe + Skrill' },
     playerauctions: { verdict: 'partial', note: 'PayPal-first' },
   },

@@ -32,8 +32,12 @@ const API_URL =
 
 async function fetchListing(slug: string): Promise<ListingPayload | null> {
   try {
+    /* Revalidate the underlying listing payload every 10 minutes — OG
+       previews don't need real-time pricing, and social crawlers
+       (Twitter, Discord, Slack, iMessage) hammer this endpoint on
+       every link share. */
     const res = await fetch(`${API_URL}/listings/${encodeURIComponent(slug)}`, {
-      cache: 'no-store',
+      next: { revalidate: 600 },
     });
     if (!res.ok) return null;
     return (await res.json()) as ListingPayload;
@@ -41,6 +45,15 @@ async function fetchListing(slug: string): Promise<ListingPayload | null> {
     return null;
   }
 }
+
+/* CDN cache for the rendered PNG itself — keeps the actual ImageResponse
+   bytes warm in Vercel's edge for an hour, with a longer s-maxage for
+   shared-cache reuse and stale-while-revalidate so an expired entry
+   serves instantly while a fresh render runs in the background. */
+const OG_CACHE_HEADERS = {
+  'Cache-Control':
+    'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800',
+};
 
 function formatPrice(amount: number, currency: string): string {
   const code = (currency || 'USD').toUpperCase();
@@ -295,6 +308,6 @@ export async function GET(
         </div>
       </div>
     ),
-    { ...OG_SIZE },
+    { ...OG_SIZE, headers: OG_CACHE_HEADERS },
   );
 }

@@ -26,6 +26,7 @@ import {
 import { Skeleton, motion } from '@getx/ui';
 import { SellerShell } from '@/components/seller-shell';
 import {
+  useLiveOrderEvents,
   useMySellerOrders,
   type EscrowStatus,
   type OrderStatus,
@@ -118,6 +119,9 @@ function hoursSince(iso: string | null | undefined): number {
 
 export default function OrdersPage() {
   const { data: orders, isLoading } = useMySellerOrders();
+  /* Subscribe to the API's `order:new` WS push so a buyer's payment
+     refreshes this queue without the seller manually reloading. */
+  useLiveOrderEvents();
   const searchParams = useSearchParams();
   const initialStage = searchParams.get('stage') ?? '';
   const [filter, setFilter] = useState<Filter>(STAGE_TO_FILTER[initialStage] ?? 'all');

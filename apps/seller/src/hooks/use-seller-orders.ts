@@ -1,7 +1,9 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { getSocket } from '@/lib/socket';
 
 export type OrderStatus =
   | 'PENDING'
@@ -110,6 +112,29 @@ export function useSellerOrder(id: string) {
     },
     enabled: !!id,
   });
+}
+
+/**
+ * Subscribes to the WS `order:new` push from the API and invalidates the
+ * seller orders query so the queue refreshes the instant a buyer pays.
+ * Mount this once at a high-level component (orders page, dashboard, or
+ * seller shell) — multiple mounts are safe but redundant.
+ */
+export function useLiveOrderEvents() {
+  const qc = useQueryClient();
+  useEffect(() => {
+    const socket = getSocket();
+    const onNewOrder = (payload: { orderId: string }) => {
+      qc.invalidateQueries({ queryKey: ['seller-orders'] });
+      if (payload?.orderId) {
+        qc.invalidateQueries({ queryKey: ['seller-orders', payload.orderId] });
+      }
+    };
+    socket.on('order:new', onNewOrder);
+    return () => {
+      socket.off('order:new', onNewOrder);
+    };
+  }, [qc]);
 }
 
 export function useMarkDelivered() {

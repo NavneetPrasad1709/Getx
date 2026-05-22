@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import { Poppins, JetBrains_Mono } from 'next/font/google';
+import { Analytics } from '@vercel/analytics/next';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 import { ThemeProvider, Toaster, PageTransition } from '@getx/ui';
 import { AuthProvider } from '@/hooks/use-auth';
 import { QueryProvider } from '@/components/query-provider';
@@ -61,6 +63,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           </QueryProvider>
           <Toaster />
         </ThemeProvider>
+        {/* Vercel-native observability — pageviews + Core Web Vitals.
+            No-op outside Vercel deploys. */}
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );

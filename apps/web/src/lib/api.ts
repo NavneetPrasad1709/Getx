@@ -14,6 +14,11 @@ export const api = axios.create({
   baseURL: API_URL,
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
+  /* 15s ceiling — the default is infinite, which lets a hung Railway
+     request hold the browser's connection pool open forever. Anything
+     legitimately slower than this (data export, big report) should
+     stream or move to a background job. */
+  timeout: 15_000,
 });
 
 // Pages that must NEVER bounce visitors to /auth/login when /auth/me 401s.

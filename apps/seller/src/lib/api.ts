@@ -12,6 +12,10 @@ export const api = axios.create({
   baseURL: API_URL,
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
+  /* Same 15s ceiling as the web/admin apps — keeps a hung Railway
+     request from holding the browser's connection pool open
+     indefinitely. */
+  timeout: 15_000,
 });
 
 // Seller dashboard is auth-required everywhere except the auth pages.

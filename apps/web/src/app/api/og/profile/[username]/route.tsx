@@ -44,9 +44,10 @@ const API_URL =
 
 async function fetchProfile(username: string): Promise<PublicProfile | null> {
   try {
+    /* Revalidate every 10 minutes — see listing OG route for rationale. */
     const res = await fetch(
       `${API_URL}/users/by-username/${encodeURIComponent(username)}`,
-      { cache: 'no-store' },
+      { next: { revalidate: 600 } },
     );
     if (!res.ok) return null;
     return (await res.json()) as PublicProfile;
@@ -54,6 +55,11 @@ async function fetchProfile(username: string): Promise<PublicProfile | null> {
     return null;
   }
 }
+
+const OG_CACHE_HEADERS = {
+  'Cache-Control':
+    'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800',
+};
 
 export async function GET(
   _req: NextRequest,
@@ -249,6 +255,6 @@ export async function GET(
         </div>
       </div>
     ),
-    { ...OG_SIZE },
+    { ...OG_SIZE, headers: OG_CACHE_HEADERS },
   );
 }

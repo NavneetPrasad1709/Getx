@@ -12,6 +12,11 @@ export const api = axios.create({
   baseURL: API_URL,
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
+  /* Same 15s ceiling as the web/seller apps — keeps a hung Railway
+     request from holding the browser's connection pool open
+     indefinitely. Genuinely-slow flows (CSV export, bulk action)
+     should stream or move to a background job, not bump this. */
+  timeout: 15_000,
 });
 
 // Admin console is auth-required everywhere except the auth pages.

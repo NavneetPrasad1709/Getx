@@ -31,8 +31,9 @@ const API_URL =
 
 async function fetchOffer(id: string): Promise<PublicOffer | null> {
   try {
+    /* Revalidate every 10 minutes — see listing OG route for rationale. */
     const res = await fetch(`${API_URL}/offers/${encodeURIComponent(id)}/public`, {
-      cache: 'no-store',
+      next: { revalidate: 600 },
     });
     if (!res.ok) return null;
     return (await res.json()) as PublicOffer;
@@ -40,6 +41,11 @@ async function fetchOffer(id: string): Promise<PublicOffer | null> {
     return null;
   }
 }
+
+const OG_CACHE_HEADERS = {
+  'Cache-Control':
+    'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800',
+};
 
 function formatPrice(amount: number, currency: string): string {
   const code = (currency || 'USD').toUpperCase();
@@ -288,6 +294,6 @@ export async function GET(
         </div>
       </div>
     ),
-    { ...OG_SIZE },
+    { ...OG_SIZE, headers: OG_CACHE_HEADERS },
   );
 }
