@@ -811,7 +811,7 @@ function DropCard({
                 {drop.price}
               </span>
               {drop.was ? (
-                <span className="text-[11.5px] text-foreground/40 line-through tabular-nums">
+                <span className="text-[11.5px] text-foreground/65 line-through tabular-nums">
                   {drop.was}
                 </span>
               ) : null}

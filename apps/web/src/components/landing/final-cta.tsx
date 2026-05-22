@@ -330,19 +330,28 @@ export function FinalCTA() {
                 </Link>
               </div>
 
-              {/* Progress dots — show which sample is up */}
-              <div className="absolute bottom-3 right-5 flex items-center gap-1">
+              {/* Progress dots — show which sample is up.
+                  Each <button> has a 24px hit area (padding + flex centring)
+                  to clear Lighthouse's touch-target audit while keeping the
+                  visible dot tiny. Aligned-end so the hit padding doesn't
+                  shove the dots away from the corner. */}
+              <div className="absolute bottom-0 right-2 flex items-center">
                 {SAMPLE_DROPS.map((_, i) => (
                   <button
                     key={i}
                     onClick={() => setIndex(i)}
                     aria-label={`Show sample ${i + 1}`}
-                    className={
-                      i === index
-                        ? 'h-1 w-4 rounded-full bg-primary'
-                        : 'h-1 w-1 rounded-full bg-foreground/25 hover:bg-foreground/45'
-                    }
-                  />
+                    className="inline-flex h-11 w-6 items-center justify-center"
+                  >
+                    <span
+                      aria-hidden
+                      className={
+                        i === index
+                          ? 'block h-1 w-4 rounded-full bg-primary'
+                          : 'block h-1 w-1 rounded-full bg-foreground/25 hover:bg-foreground/45'
+                      }
+                    />
+                  </button>
                 ))}
               </div>
             </div>
