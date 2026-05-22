@@ -868,26 +868,11 @@ export function Header() {
                 keeps Tier 2 focused on identity (logo), search, and
                 account/wallet actions only. */}
             <div className="flex-1 hidden md:flex items-center justify-end gap-1.5 min-w-0 shrink-0">
-              {/* "Sell on GETX" — text-only secondary action so the
-                  cluster doesn't compete with the primary "Get started"
-                  CTA. Soft accent on hover. Hidden below xl when space
-                  is tight; mobile drawer keeps the link reachable. */}
-              <a
-                href={sellerUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Sell on GETX (opens seller dashboard)"
-                className="
-                  group hidden xl:inline-flex items-center gap-1 h-10 px-3 rounded-full whitespace-nowrap shrink-0
-                  text-[hsl(var(--foreground)/0.85)] text-[13px] font-semibold
-                  hover:text-[hsl(var(--accent))] hover:bg-[hsl(var(--accent)/0.08)]
-                  transition-colors duration-150
-                "
-              >
-                <Sparkles className="h-3.5 w-3.5 text-[hsl(var(--accent))] transition-transform group-hover:rotate-12" />
-                Sell on GETX
-                <ArrowUpRight className="h-3 w-3 opacity-60" />
-              </a>
+              {/* Sell on GETX was moved to Tier 3 (CategoryStrip),
+                  paired with the ThemeToggle so the right side of
+                  Tier 2 stays clean (search-bar + account cluster only)
+                  and the secondary CTA reads as a utility action next
+                  to the appearance toggle. */}
               {loading ? (
                 <div className="h-10 w-24 rounded-full bg-[hsl(var(--surface-elevated))] animate-pulse" />
               ) : isAuthenticated ? (
@@ -1745,12 +1730,35 @@ function CategoryStrip({
               </Link>
             ))}
 
-            {/* Divider before the theme toggle so it reads as its own
-                control rather than another nav link. */}
+            {/* Divider before the utility cluster (Sell on GETX +
+                theme toggle) so it reads as its own control group
+                rather than another nav link. */}
             <span
               aria-hidden
               className="mx-1.5 h-4 w-px bg-gradient-to-b from-transparent via-[hsl(var(--border))] to-transparent"
             />
+
+            {/* Sell on GETX — secondary CTA living next to the theme
+                toggle in Tier 3. Opens the seller dashboard on its own
+                subdomain (separate Next app). Sparkles accent + hover
+                lift mirror the rest of the strip's micro-interactions
+                so it doesn't feel grafted on. */}
+            <a
+              href={process.env.NEXT_PUBLIC_SELLER_URL || 'http://localhost:3001'}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Sell on GETX (opens seller dashboard)"
+              className="
+                group inline-flex items-center gap-1.5 h-9 px-3 rounded-full whitespace-nowrap shrink-0
+                text-[hsl(var(--foreground)/0.85)] text-[13px] font-semibold
+                hover:text-[hsl(var(--accent))] hover:bg-[hsl(var(--accent)/0.08)]
+                transition-colors duration-150
+              "
+            >
+              <Sparkles className="h-3.5 w-3.5 text-[hsl(var(--accent))] transition-transform group-hover:rotate-12" />
+              Sell on GETX
+              <ArrowUpRight className="h-3 w-3 opacity-60" />
+            </a>
 
             <ThemeToggle />
           </li>
