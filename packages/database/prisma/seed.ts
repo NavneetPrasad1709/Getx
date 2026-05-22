@@ -33,21 +33,76 @@ async function main() {
 
   // ── Games ──────────────────────────────────────────────────────
   console.log('  · games (Pokemon GO, Roblox)');
+  /* Boosting services nest inside the Boosting tab's subServices array
+     — the consumer (web boosting hub page + games.service.getServiceConfig)
+     reads `tabs[i].subServices`, not a top-level boostingServices key.
+     Previously seeded as top-level which left /games/pokemon-go/boosting
+     showing the empty-state copy ("launching with next patch") despite
+     the services existing. */
   const pokemonGoFields: Prisma.InputJsonValue = {
     tabs: [
       { slug: 'accounts', name: 'Accounts', type: 'BROWSE', icon: '👤' },
       { slug: 'top-ups', name: 'Top Ups', type: 'BROWSE', icon: '💰' },
       { slug: 'items', name: 'Items', type: 'BROWSE', icon: '📦' },
-      { slug: 'boosting', name: 'Boosting', type: 'REVERSE', icon: '⚡' },
-    ],
-    boostingServices: [
-      { slug: 'level-up', name: 'Level Up', icon: '⬆️' },
-      { slug: 'xp-boost', name: 'XP Boost', icon: '⚡' },
-      { slug: 'stardust-farming', name: 'Stardust Farming', icon: '✨' },
-      { slug: 'raid-service', name: 'Raid Service', icon: '⚔️' },
-      { slug: 'shiny-hunting', name: 'Shiny Hunting', icon: '🌟' },
-      { slug: 'legendary-catch', name: 'Legendary Catch', icon: '🦅' },
-      { slug: 'event-grinding', name: 'Event Grinding', icon: '🎁' },
+      {
+        slug: 'boosting',
+        name: 'Boosting',
+        type: 'REVERSE',
+        icon: '⚡',
+        tagline: 'Get expert boosters in under 2 minutes',
+        description: 'Fill the form, sellers bid, you choose the best offer.',
+        subServices: [
+          {
+            slug: 'level-up',
+            name: 'Level Up',
+            icon: '⬆️',
+            description: 'Level up your Pokemon GO trainer fast',
+            estimatedTime: '1-7 days',
+          },
+          {
+            slug: 'xp-boost',
+            name: 'XP Boost',
+            icon: '⚡',
+            description: 'Bulk XP grinding through events and lucky eggs',
+            estimatedTime: '1-3 days',
+          },
+          {
+            slug: 'stardust-farming',
+            name: 'Stardust Farming',
+            icon: '✨',
+            description: 'Stockpile stardust for powering up your roster',
+            estimatedTime: '2-5 days',
+          },
+          {
+            slug: 'raid-service',
+            name: 'Raid Service',
+            icon: '⚔️',
+            description: 'Tier 5 raids and special research completion',
+            estimatedTime: '1-2 days',
+          },
+          {
+            slug: 'shiny-hunting',
+            name: 'Shiny Hunting',
+            icon: '🌟',
+            description: 'Targeted shiny catches during community days and events',
+            estimatedTime: '1-7 days',
+          },
+          {
+            slug: 'legendary-catch',
+            name: 'Legendary Catch',
+            icon: '🦅',
+            description: 'Catch any active legendary with guaranteed completion',
+            estimatedTime: '1-3 days',
+          },
+          {
+            slug: 'event-grinding',
+            name: 'Event Grinding',
+            icon: '🎁',
+            description: 'Full event ticket completion, no missed bonuses',
+            estimatedTime: 'event duration',
+          },
+        ],
+      },
     ],
   };
 
