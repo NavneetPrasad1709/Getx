@@ -80,10 +80,7 @@ export class StripePaymentProvider implements PaymentProvider {
       'line_items[0][price_data][currency]',
       opts.currency.toLowerCase(),
     );
-    form.set(
-      'line_items[0][price_data][product_data][name]',
-      opts.itemTitle,
-    );
+    form.set('line_items[0][price_data][product_data][name]', opts.itemTitle);
     form.set('line_items[0][price_data][unit_amount]', opts.amount.toString());
     form.set('line_items[0][quantity]', '1');
     form.set('success_url', opts.successUrl);
@@ -175,10 +172,11 @@ export class StripePaymentProvider implements PaymentProvider {
     return { success: true, refundId: data.id };
   }
 
-  parseWebhook(
+  // eslint-disable-next-line @typescript-eslint/require-await -- async only to satisfy the PayPal-driven interface contract; verification stays sync (HMAC)
+  async parseWebhook(
     headers: Record<string, string>,
     body: string,
-  ): WebhookEvent | null {
+  ): Promise<WebhookEvent | null> {
     /* Signature verification — only enforced when STRIPE_WEBHOOK_SECRET set.
        Dev mode without the secret accepts all webhooks but logs a warning. */
     if (this.webhookSecret) {
@@ -256,7 +254,7 @@ export class StripePaymentProvider implements PaymentProvider {
             : undefined,
         taxAmount,
         taxBreakdown,
-        metadata: (obj.metadata ?? {}) as Record<string, string>,
+        metadata: obj.metadata ?? {},
         rawPayload: event as unknown as Record<string, unknown>,
       };
     } catch (err) {

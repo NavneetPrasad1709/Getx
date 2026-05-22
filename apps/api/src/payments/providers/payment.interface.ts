@@ -48,20 +48,15 @@ export interface RefundResult {
   refundId: string;
 }
 
-export type ProviderName =
-  | 'stripe'
-  | 'paypal'
-  | 'razorpay'
-  | 'paddle'
-  | 'mock';
+/* Stripe is the only real checkout provider. `mock` stays as a dev-only
+   fallback when STRIPE_SECRET_KEY is unset — production refuses the
+   mock path (see PaymentsService.resolveProvider). */
+export type ProviderName = 'stripe' | 'mock';
 
 /* Maps each frontend/business provider name to the Prisma
    PaymentProvider enum value persisted on Order.paymentProvider. */
 export const PROVIDER_TO_PRISMA: Record<ProviderName, string | null> = {
   stripe: 'STRIPE',
-  paypal: 'PAYPAL',
-  razorpay: 'RAZORPAY',
-  paddle: 'PADDLE',
   mock: null,
 };
 
@@ -69,8 +64,14 @@ export interface PaymentProvider {
   readonly name: ProviderName;
   createCheckout(opts: CheckoutOptions): Promise<CheckoutSession>;
   refund(opts: RefundOptions): Promise<RefundResult>;
+  /* parseWebhook is async because PayPal's signature verification calls
+     PayPal's verify endpoint over HTTPS — making the contract Promise-
+     returning closes the fire-and-forget gap where an unverified PayPal
+     event could be dispatched to the order state machine. Other
+     providers still verify synchronously via HMAC and simply wrap the
+     return in a resolved promise. */
   parseWebhook(
     headers: Record<string, string>,
     body: string,
-  ): WebhookEvent | null;
+  ): Promise<WebhookEvent | null>;
 }

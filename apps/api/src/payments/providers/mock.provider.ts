@@ -45,10 +45,11 @@ export class MockPaymentProvider implements PaymentProvider {
     });
   }
 
-  parseWebhook(
+  // eslint-disable-next-line @typescript-eslint/require-await -- async only to satisfy the PayPal-driven interface contract
+  async parseWebhook(
     _headers: Record<string, string>,
     body: string,
-  ): WebhookEvent | null {
+  ): Promise<WebhookEvent | null> {
     try {
       const data = JSON.parse(body) as Record<string, unknown>;
       const type =
