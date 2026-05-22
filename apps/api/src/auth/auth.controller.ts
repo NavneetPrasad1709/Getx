@@ -16,6 +16,11 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import {
+  GoogleOAuthRedirectGuard,
+  DiscordOAuthRedirectGuard,
+  OAuthFailureRedirector,
+} from './guards/oauth-redirect.guard';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { RegisterSchema } from './dto/register.dto';
@@ -29,7 +34,10 @@ import type { OAuthProfileNormalized } from './strategies/google.strategy';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private auth: AuthService) {}
+  constructor(
+    private auth: AuthService,
+    private oauthRedirect: OAuthFailureRedirector,
+  ) {}
 
   @Public()
   @Post('register')
@@ -167,12 +175,16 @@ export class AuthController {
 
   @Public()
   @Get('google/callback')
-  @UseGuards(AuthGuard('google'))
+  @UseGuards(GoogleOAuthRedirectGuard)
   async googleCallback(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const profile = req.user as OAuthProfileNormalized;
+    const profile = req.user as OAuthProfileNormalized & { oauthError?: string };
+    if (profile?.oauthError) {
+      this.oauthRedirect.redirect(res, profile.oauthError);
+      return;
+    }
     return this.auth.handleOAuth(profile, req, res);
   }
 
@@ -187,12 +199,16 @@ export class AuthController {
 
   @Public()
   @Get('discord/callback')
-  @UseGuards(AuthGuard('discord'))
+  @UseGuards(DiscordOAuthRedirectGuard)
   async discordCallback(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const profile = req.user as OAuthProfileNormalized;
+    const profile = req.user as OAuthProfileNormalized & { oauthError?: string };
+    if (profile?.oauthError) {
+      this.oauthRedirect.redirect(res, profile.oauthError);
+      return;
+    }
     return this.auth.handleOAuth(profile, req, res);
   }
 }

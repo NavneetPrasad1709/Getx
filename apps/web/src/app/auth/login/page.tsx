@@ -114,6 +114,27 @@ function LoginForm() {
   const emailValue = watch('email') ?? '';
   const emailValid = !errors.email && dirtyFields.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue);
 
+  /* OAuth failure surfacing — backend redirects to /auth/login?error=
+     <code> when the Google/Discord callback rejects (user cancelled,
+     no email returned, code-exchange failed). One useEffect on mount
+     converts the query param into a toast and strips it from the URL
+     so a browser refresh doesn't re-fire the message. */
+  useEffect(() => {
+    const code = params.get('error');
+    if (!code) return;
+    const messages: Record<string, string> = {
+      oauth_cancelled: 'Sign-in cancelled. Try again or use email.',
+      oauth_no_email:
+        'We could not read your email from that provider. Use a different sign-in.',
+      oauth_failed:
+        'Sign-in could not complete. Please try again or use email.',
+    };
+    toast.error(messages[code] ?? messages.oauth_failed);
+    const url = new URL(window.location.href);
+    url.searchParams.delete('error');
+    window.history.replaceState({}, '', url.toString());
+  }, [params]);
+
   const onSubmit = async (data: FormData) => {
     if (cooldown.remaining > 0) return;
     setLoading(true);

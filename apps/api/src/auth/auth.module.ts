@@ -10,6 +10,11 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { GoogleStrategy } from './strategies/google.strategy';
 import { DiscordStrategy } from './strategies/discord.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import {
+  GoogleOAuthRedirectGuard,
+  DiscordOAuthRedirectGuard,
+  OAuthFailureRedirector,
+} from './guards/oauth-redirect.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { SanctionsCron } from './sanctions.cron';
 
@@ -36,6 +41,9 @@ import { SanctionsCron } from './sanctions.cron';
     JwtStrategy,
     GoogleStrategy,
     DiscordStrategy,
+    GoogleOAuthRedirectGuard,
+    DiscordOAuthRedirectGuard,
+    OAuthFailureRedirector,
     SanctionsCron,
     // Order matters: throttler runs first to short-circuit before auth/role checks.
     { provide: APP_GUARD, useClass: ThrottlerGuard },
