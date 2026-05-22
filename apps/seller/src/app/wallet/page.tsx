@@ -206,10 +206,15 @@ export default function WalletPage() {
       toast.error('No funds to withdraw');
       return;
     }
-    // Withdrawal modal — kept inline-light for now. Production rail is
-    // Stripe Connect Express; clicking takes them to a hosted dashboard.
-    // Until that's wired, point them at the Stripe dashboard via account link.
-    void handleStartOnboarding();
+    /* Stripe is intentionally deferred for the soft-launch, so a real
+       withdraw is not yet possible. Surface that explicitly instead of
+       re-opening the Connect onboarding link (which the old code did
+       and made it look like a withdraw button that silently re-routed
+       through onboarding). When STRIPE_SECRET_KEY lands on the API,
+       swap this for a Stripe Connect Express dashboard login link. */
+    toast.info(
+      'Withdrawals open the day checkout goes live. Payout setup is saved.',
+    );
   };
 
   return (
@@ -374,7 +379,7 @@ export default function WalletPage() {
             <div className="text-[12.5px] text-muted-foreground leading-relaxed">
               Funds are held in escrow until the buyer confirms delivery or the 3-day
               auto-release window passes. GETX charges 8% per completed sale.{' '}
-              <Link href="https://getx.gg/how-it-works" target="_blank" className="text-primary font-semibold inline-flex items-center gap-0.5">
+              <Link href="https://getx.live/how-it-works" target="_blank" className="text-primary font-semibold inline-flex items-center gap-0.5">
                 How escrow works
                 <ArrowUpRight className="h-3 w-3" />
               </Link>

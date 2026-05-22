@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { Header } from '@/components/header';
 import { LandingFooter } from '@/components/landing/landing-footer';
+import { CHECKOUT_DISABLED } from '@/lib/feature-flags';
 import { GetxShieldBadge } from '@/components/shield/getx-shield-badge';
 import { TierAsRankBadge } from '@/components/badges/rank-badge';
 import { useApplyWallet, useWallet } from '@/hooks/use-wallet';
@@ -189,6 +190,16 @@ export default function OrderDetailPage() {
   }, [searchParams, refetch, id]);
 
   const handlePay = async () => {
+    /* Defense against bypassing the listing-page CHECKOUT_DISABLED
+       gate. Reaching this branch requires an order already in PENDING,
+       which existed before Stripe was deferred — so users hitting Pay
+       from order-detail get the same "coming soon" treatment. Real
+       checkout re-enables when STRIPE_SECRET_KEY lands on the API
+       (see PaymentsService.resolveProvider). */
+    if (CHECKOUT_DISABLED) {
+      toast.info('Checkout opens in a few days — sign up to get notified at launch.');
+      return;
+    }
     try {
       const session = await createCheckout.mutateAsync(id);
       window.location.href = session.checkoutUrl;

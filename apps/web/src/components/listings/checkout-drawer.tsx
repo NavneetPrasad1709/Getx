@@ -24,6 +24,7 @@ import type { ListingDetail, ListingVariant } from '@/hooks/use-listings';
 import { useCreateOrderFromListing, useCreateCheckout } from '@/hooks/use-orders';
 import { useAuth } from '@/hooks/use-auth';
 import { formatMoney } from '@/lib/currency';
+import { CHECKOUT_DISABLED } from '@/lib/feature-flags';
 
 /* CheckoutDrawer — the "click → pay" surface.
  *
@@ -82,6 +83,16 @@ export function CheckoutDrawer({
   const variantLabel = activeVariant?.label;
 
   const handlePay = async () => {
+    /* Defense-in-depth: every caller that opens this drawer should be
+       behind gateCheckout() already, but if a future surface forgets,
+       this stops any real order/checkout request from firing while
+       Stripe is deferred (MockProvider would otherwise mark the order
+       PAID without a charge). */
+    if (CHECKOUT_DISABLED) {
+      onClose();
+      toast.info('Checkout opens in a few days — sign up to get notified at launch.');
+      return;
+    }
     if (!isAuthenticated) {
       onClose();
       toast.info('Please log in to buy');

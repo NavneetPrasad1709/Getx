@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 
@@ -34,7 +34,7 @@ const SELLER_URL = process.env.NEXT_PUBLIC_SELLER_URL ?? 'http://localhost:3001'
 
 export function SellerGuard({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { isAuthenticated, loading } = useAuth();
+  const { user, isAuthenticated, loading } = useAuth();
 
   useEffect(() => {
     if (loading) return;
@@ -63,7 +63,73 @@ export function SellerGuard({ children }: { children: ReactNode }) {
     );
   }
 
+  /* Authenticated but not yet a seller — every seller-app surface
+     assumes user.isSeller, so a buyer who lands on a deep link
+     (sell.getx.live/listings, /orders, etc) would see empty data and
+     a confusing dashboard. Render a single CTA that activates the
+     seller flag via the existing /auth/me/activate-seller endpoint
+     before the page mounts. */
+  if (!user?.isSeller) {
+    return <NotASellerScreen />;
+  }
+
   return <>{children}</>;
+}
+
+/* Single-step "become a seller" CTA. Hits the activate-seller endpoint
+   then forces a /auth/me refetch so isSeller flips true and the page
+   re-renders the real seller UI. Activation is idempotent server-side
+   (PATCH /auth/me/activate-seller). */
+function NotASellerScreen() {
+  const { refetch } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const onActivate = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
+      const res = await fetch(`${apiUrl}/auth/me/activate-seller`, {
+        method: 'PATCH',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error(`Activate failed (${res.status})`);
+      await refetch();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Activation failed');
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen grid place-items-center bg-background text-foreground px-6">
+      <div className="text-center max-w-md">
+        <div className="inline-flex items-center justify-center h-12 w-12 rounded-full bg-primary/10 text-primary mb-5">
+          <Spinner className={busy ? 'h-5 w-5 animate-spin' : 'hidden'} />
+          <svg className={busy ? 'hidden' : 'h-5 w-5'} viewBox="0 0 24 24" fill="none" aria-hidden>
+            <path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </div>
+        <div className="font-display text-xl sm:text-2xl font-bold tracking-tight mb-2">
+          Activate your seller dashboard
+        </div>
+        <p className="text-sm text-muted-foreground leading-relaxed mb-6">
+          You&apos;re signed in as a buyer. Activating opens the seller dashboard
+          so you can list accounts, top-ups, and services on GETX.
+        </p>
+        {err ? <p className="text-sm text-red-500 mb-4">{err}</p> : null}
+        <button
+          type="button"
+          onClick={onActivate}
+          disabled={busy}
+          className="inline-flex items-center justify-center h-11 px-5 rounded-full bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {busy ? 'Activating…' : 'Become a seller'}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /* Branded full-screen loading panel used during the auth probe and the
