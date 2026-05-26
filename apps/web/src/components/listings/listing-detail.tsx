@@ -123,9 +123,24 @@ export function Gallery({
             style={zoom.on ? { transform: 'scale(1.8)', transformOrigin: `${zoom.x}% ${zoom.y}%` } : undefined}
           />
         ) : (
-          <div className="absolute inset-0 grid place-items-center">
-            <div className="font-display text-[12rem] leading-none font-bold text-primary/20 select-none">
-              {fallbackChar}
+          /* Empty-image fallback. Earlier render used `text-primary/20`
+             on a dark gradient which looked like a stuck loading spinner
+             — testers reported "pic not loading". Now we anchor a clear
+             icon + label so it's obvious the listing simply hasn't
+             uploaded artwork yet, not that the page is hung. */
+          <div className="absolute inset-0 grid place-items-center bg-gradient-to-br from-primary/8 via-surface to-accent/5">
+            <div className="text-center px-6 select-none">
+              <div className="mx-auto mb-3 h-16 w-16 rounded-full bg-foreground/5 ring-1 ring-border/60 grid place-items-center">
+                <span className="font-display text-3xl font-bold text-foreground/40">
+                  {fallbackChar}
+                </span>
+              </div>
+              <div className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground">
+                Artwork coming soon
+              </div>
+              <div className="mt-1 text-sm font-semibold text-foreground/80 max-w-[18ch] truncate mx-auto">
+                {title}
+              </div>
             </div>
           </div>
         )}

@@ -694,14 +694,18 @@ export function Header() {
                 {/* Light-mode fallback — keeps the old monochrome SVG since
                     the new chrome-3D mark needs a dark backdrop to read.
                     Dark theme gets the premium new asset. */}
+                {/* Logo bumped from h-7/8 → h-9/11 because testers
+                    flagged the previous mark as undersized — the
+                    left column visually read as empty. Width auto so
+                    the wordmark's natural aspect drives the layout. */}
                 <Image
                   src="/logos/getx-logo-dark.svg"
                   alt="GETX"
                   width={384}
                   height={256}
                   priority
-                  sizes="(min-width: 768px) 120px, 100px"
-                  className="h-7 md:h-8 w-auto dark:hidden"
+                  sizes="(min-width: 768px) 160px, 130px"
+                  className="h-9 md:h-11 w-auto dark:hidden"
                 />
                 <Image
                   src="/brand/getx-logo.webp"
@@ -709,8 +713,8 @@ export function Header() {
                   width={1920}
                   height={640}
                   priority
-                  sizes="(min-width: 768px) 140px, 110px"
-                  className="h-8 md:h-10 w-auto hidden dark:block"
+                  sizes="(min-width: 768px) 180px, 140px"
+                  className="h-10 md:h-12 w-auto hidden dark:block"
                 />
               </Link>
             </div>
