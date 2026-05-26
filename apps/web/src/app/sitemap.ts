@@ -85,7 +85,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // The 7 boosting service forms get their own URLs.
   const services = [
     'level-up',
-    'xp-boost',
+    'grunts-boost',
     'stardust-farming',
     'raid-service',
     'shiny-hunting',

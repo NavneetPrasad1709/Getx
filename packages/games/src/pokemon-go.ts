@@ -301,10 +301,10 @@ export const pokemonGoConfig: GameConfig = {
           addons: COMMON_ADDONS,
         },
         {
-          slug: 'xp-boost',
-          name: 'XP Boost',
+          slug: 'grunts-boost',
+          name: 'Grunts Boost',
           icon: '⚡',
-          description: 'Massive XP gains for your trainer',
+          description: 'Grunt-battle farming for stardust, candy, and event tokens',
           estimatedTime: '6-48 hours',
           formFields: [
             {

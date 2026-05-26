@@ -26,7 +26,7 @@ const POKEMON_GO_FIELDS: Prisma.InputJsonValue = {
   ],
   boostingServices: [
     { slug: 'level-up', name: 'Level Up', icon: '⬆️' },
-    { slug: 'xp-boost', name: 'XP Boost', icon: '⚡' },
+    { slug: 'grunts-boost', name: 'Grunts Boost', icon: '⚡' },
     { slug: 'stardust-farming', name: 'Stardust Farming', icon: '✨' },
     { slug: 'raid-service', name: 'Raid Service', icon: '⚔️' },
     { slug: 'shiny-hunting', name: 'Shiny Hunting', icon: '🌟' },

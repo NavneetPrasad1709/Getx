@@ -47,9 +47,10 @@ export function CustomRequestModal({ open, onClose, gameSlug, tabType, prefillTi
 
   const [title, setTitle] = useState(prefillTitle);
   const [description, setDescription] = useState('');
-  const [budgetMin, setBudgetMin] = useState('');
-  const [budgetMax, setBudgetMax] = useState('');
-  const [deliveryDays, setDeliveryDays] = useState('7');
+  /* Buyer-set budget + delivery removed per testing feedback — sellers
+     now propose both in their offer. Currency dropdown lets the buyer
+     declare which currency they want bids quoted in. */
+  const [currency, setCurrency] = useState('USD');
   const [images, setImages] = useState<ImageState[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [dragActive, setDragActive] = useState(false);
@@ -61,9 +62,7 @@ export function CustomRequestModal({ open, onClose, gameSlug, tabType, prefillTi
     if (open) {
       setTitle(prefillTitle);
       setDescription('');
-      setBudgetMin('');
-      setBudgetMax('');
-      setDeliveryDays('7');
+      setCurrency('USD');
       setImages([]);
       setErrors({});
     }
@@ -158,11 +157,6 @@ export function CustomRequestModal({ open, onClose, gameSlug, tabType, prefillTi
     if (!description || description.length < 20) {
       next.description = 'Description must be at least 20 characters';
     }
-    const min = parseFloat(budgetMin);
-    const max = parseFloat(budgetMax);
-    if (!min || min < 1) next.budgetMin = 'Required';
-    if (!max || max < 1) next.budgetMax = 'Required';
-    if (min && max && max < min) next.budgetMax = 'Max must be ≥ min';
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -194,10 +188,13 @@ export function CustomRequestModal({ open, onClose, gameSlug, tabType, prefillTi
         title,
         description,
         images: images.map((img) => img.url),
-        budgetMin: parseFloat(budgetMin),
-        budgetMax: parseFloat(budgetMax),
-        currency: 'USD',
-        deliveryDays: parseInt(deliveryDays, 10),
+        currency,
+        /* Buyer no longer sets budget or timeline — sellers propose both
+           in their offers. Send zeros so the API schema (which still
+           types the columns as numbers) stays satisfied during transition. */
+        budgetMin: 0,
+        budgetMax: 0,
+        deliveryDays: 0,
         attributes: {},
       });
 
@@ -355,46 +352,29 @@ export function CustomRequestModal({ open, onClose, gameSlug, tabType, prefillTi
               )}
             </div>
 
+            {/* Currency the buyer wants to receive bids in. Replaces
+                the old buyer-set Budget Range + Need-it-within fields —
+                price and delivery time are now seller-proposed in
+                their offers (more realistic, fewer mismatched bids). */}
             <div>
               <label className="text-sm font-medium block mb-1.5">
-                Budget Range (USD) <span className="text-error">*</span>
+                Currency for bids
               </label>
-              <div className="flex gap-2 items-center">
-                <Input
-                  type="number"
-                  placeholder="Min"
-                  value={budgetMin}
-                  onChange={(e) => setBudgetMin(e.target.value)}
-                  min={1}
-                  step={0.01}
-                />
-                <span className="text-muted-foreground text-sm shrink-0">to</span>
-                <Input
-                  type="number"
-                  placeholder="Max"
-                  value={budgetMax}
-                  onChange={(e) => setBudgetMax(e.target.value)}
-                  min={1}
-                  step={0.01}
-                />
-              </div>
-              {(errors.budgetMin || errors.budgetMax) && (
-                <p className="text-error text-xs mt-1">{errors.budgetMin || errors.budgetMax}</p>
-              )}
-              <p className="text-xs text-muted-foreground mt-1">
-                Realistic budgets get more offers
+              <select
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+                className="w-full h-11 rounded-md border border-input bg-background px-3 text-sm font-medium"
+              >
+                <option value="USD">USD — US Dollar ($)</option>
+                <option value="EUR">EUR — Euro (€)</option>
+                <option value="GBP">GBP — British Pound (£)</option>
+                <option value="INR">INR — Indian Rupee (₹)</option>
+                <option value="AUD">AUD — Australian Dollar (A$)</option>
+                <option value="CAD">CAD — Canadian Dollar (C$)</option>
+              </select>
+              <p className="text-xs text-muted-foreground mt-1.5">
+                Sellers will quote price and delivery time in their offers.
               </p>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium block mb-1.5">Need it within (days)</label>
-              <Input
-                type="number"
-                value={deliveryDays}
-                onChange={(e) => setDeliveryDays(e.target.value)}
-                min={1}
-                max={60}
-              />
             </div>
           </div>
 

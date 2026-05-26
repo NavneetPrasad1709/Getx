@@ -34,10 +34,10 @@ const NEW_FIELDS_CONFIG: Prisma.InputJsonValue = {
           estimatedTime: '1-7 days',
         },
         {
-          slug: 'xp-boost',
-          name: 'XP Boost',
+          slug: 'grunts-boost',
+          name: 'Grunts Boost',
           icon: '⚡',
-          description: 'Bulk XP grinding through events and lucky eggs',
+          description: 'Grunt-battle farming for stardust, candy, and event tokens',
           estimatedTime: '1-3 days',
         },
         {
