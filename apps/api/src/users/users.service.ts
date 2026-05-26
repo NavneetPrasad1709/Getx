@@ -157,7 +157,14 @@ export class UsersService {
         data: { unsubscribeToken: token },
       });
     }
-    return `${webUrl}/u/${token}`;
+    /* /unsubscribe/{token} is a dedicated web route that calls the
+       API endpoint GET /users/unsubscribe/:token and renders a
+       confirmation. The previous /u/{token} URL collided with the
+       short-profile alias which redirects to /users/{username} —
+       saved-search emails were shipping a link that landed on a
+       broken profile page and never actually unsubscribed anyone
+       (CAN-SPAM / GDPR violation). */
+    return `${webUrl}/unsubscribe/${token}`;
   }
 
   /* One-click unsubscribe — flips emailNotifications=false for the matching

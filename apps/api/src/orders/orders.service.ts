@@ -5,6 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import type { Prisma } from '@getx/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -711,9 +712,16 @@ export class OrdersService {
   }
 
   /**
-   * Cron-ready auto-release. Runs over orders with autoReleaseAt < now()
-   * still in HELD escrow.
+   * Hourly auto-release sweeper. Without this cron, every PAID order
+   * sits in HELD escrow until the buyer manually confirms — sellers
+   * never get paid for orders where the buyer disappears or forgets.
+   * The 3-day escrow timer (set on order create as autoReleaseAt) is
+   * the contract; this is what enforces it.
+   *
+   * Idempotent: releaseToSeller no-ops when escrowStatus is already
+   * RELEASED, so a re-run on the same order is safe.
    */
+  @Cron(CronExpression.EVERY_HOUR, { name: 'escrowAutoRelease' })
   async releaseExpiredEscrow() {
     // An order with an open dispute must never auto-release, even when the
     // escrow timer has elapsed and order.status is still DELIVERED/PAID —

@@ -80,6 +80,18 @@ export class SumsubWebhookController {
         throw new BadRequestException('Invalid signature');
       }
     } else {
+      /* Production must verify every webhook — otherwise any anonymous
+         attacker can POST { reviewResult: { reviewAnswer: 'GREEN' } }
+         and have us flip kycStatus → VERIFIED on a targeted userId,
+         unlocking withdrawals + bypassing sanctions checks. Dev allows
+         the unsigned path so a local Sumsub-less environment can still
+         smoke the flow. */
+      if (process.env.NODE_ENV === 'production') {
+        this.logger.error(
+          'SUMSUB_SECRET_KEY missing in production — refusing unsigned webhook.',
+        );
+        throw new BadRequestException('Webhook verification unavailable');
+      }
       this.logger.warn(
         'SUMSUB_SECRET_KEY missing — accepting webhook without signature verification (dev mode).',
       );
