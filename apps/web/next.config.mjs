@@ -68,7 +68,7 @@ const nextConfig = {
       "font-src 'self' data:",
       "style-src 'self' 'unsafe-inline'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://va.vercel-scripts.com https://vercel.live",
-      "connect-src 'self' https://api-production-0ef8.up.railway.app wss://api-production-0ef8.up.railway.app https://vitals.vercel-insights.com https://vercel.live wss://ws-us3.pusher.com",
+      "connect-src 'self' https://api.getx.live wss://api.getx.live https://api-production-0ef8.up.railway.app wss://api-production-0ef8.up.railway.app https://vitals.vercel-insights.com https://vercel.live wss://ws-us3.pusher.com",
       'upgrade-insecure-requests',
     ].join('; ');
 
