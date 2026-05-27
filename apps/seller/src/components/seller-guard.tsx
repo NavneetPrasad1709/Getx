@@ -89,7 +89,7 @@ function NotASellerScreen() {
     setBusy(true);
     setErr(null);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? '/api/v1';
       const res = await fetch(`${apiUrl}/auth/me/activate-seller`, {
         method: 'PATCH',
         credentials: 'include',

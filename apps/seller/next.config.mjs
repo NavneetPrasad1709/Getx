@@ -31,6 +31,17 @@ const nextConfig = {
     optimizePackageImports: ['@getx/ui'],
   },
 
+  async rewrites() {
+    const apiUpstream =
+      process.env.API_UPSTREAM_URL || 'http://localhost:4000';
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${apiUpstream}/api/:path*`,
+      },
+    ];
+  },
+
   async headers() {
     return [
       {

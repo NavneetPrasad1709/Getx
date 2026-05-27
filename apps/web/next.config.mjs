@@ -68,7 +68,7 @@ const nextConfig = {
       "font-src 'self' data:",
       "style-src 'self' 'unsafe-inline'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://va.vercel-scripts.com https://vercel.live",
-      "connect-src 'self' https://api.getx.live wss://api.getx.live https://api-production-0ef8.up.railway.app wss://api-production-0ef8.up.railway.app https://vitals.vercel-insights.com https://vercel.live wss://ws-us3.pusher.com",
+      "connect-src 'self' wss://api.getx.live https://api.getx.live https://vitals.vercel-insights.com https://vercel.live",
       'upgrade-insecure-requests',
     ].join('; ');
 
@@ -85,6 +85,17 @@ const nextConfig = {
           },
           { key: 'Content-Security-Policy', value: csp },
         ],
+      },
+    ];
+  },
+
+  async rewrites() {
+    const apiUpstream =
+      process.env.API_UPSTREAM_URL || 'http://localhost:4000';
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${apiUpstream}/api/:path*`,
       },
     ];
   },

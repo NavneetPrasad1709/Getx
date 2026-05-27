@@ -1,9 +1,13 @@
 import { io, Socket } from 'socket.io-client';
 
 let socket: Socket | null = null;
+let tokenPromise: Promise<string | undefined> | null = null;
 
 function getSocketUrl(): string {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
+  if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
+  const apiUrl =
+    process.env.NEXT_PUBLIC_API_DIRECT_URL ??
+    'http://localhost:4000';
   return apiUrl.replace(/\/api\/v1\/?$/, '');
 }
 
@@ -12,28 +16,53 @@ interface RateLimitPayload {
   retryAfterMs: number;
 }
 
+async function fetchWsToken(): Promise<string | undefined> {
+  try {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? '/api/v1';
+    const res = await fetch(`${apiUrl}/auth/ws-token`, { credentials: 'include' });
+    if (!res.ok) return undefined;
+    const data = (await res.json()) as { token?: string | null };
+    return data.token ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function initSocket(): void {
+  if (socket) return;
+  tokenPromise = fetchWsToken();
+  tokenPromise.then((token) => {
+    if (socket) return;
+    socket = io(`${getSocketUrl()}/chat`, {
+      withCredentials: true,
+      transports: ['websocket', 'polling'],
+      autoConnect: true,
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 30_000,
+      ...(token ? { auth: { token } } : {}),
+    });
+
+    socket.on('rate_limit_exceeded', (data: RateLimitPayload) => {
+      console.warn(
+        `[chat] rate limit hit on "${data.event}", retry in ${Math.ceil(data.retryAfterMs / 1000)}s`,
+      );
+    });
+  });
+}
+
 export function getSocket(): Socket {
-  if (socket && socket.connected) return socket;
-  if (socket) return socket;
-
-  socket = io(`${getSocketUrl()}/chat`, {
-    withCredentials: true,
-    transports: ['websocket', 'polling'],
-    autoConnect: true,
-    reconnection: true,
-    reconnectionAttempts: 5,
-    reconnectionDelay: 1000,
-  });
-
-  // Server emits this when WS rate limit is hit (per user/event). Surfaced
-  // here so any feature can react. UI toast is intentionally not dispatched
-  // — components decide what to do with the warning.
-  socket.on('rate_limit_exceeded', (data: RateLimitPayload) => {
-    console.warn(
-      `[chat] rate limit hit on "${data.event}", retry in ${Math.ceil(data.retryAfterMs / 1000)}s`,
-    );
-  });
-
+  if (!socket) {
+    initSocket();
+    if (!socket) {
+      socket = io(`${getSocketUrl()}/chat`, {
+        withCredentials: true,
+        transports: ['websocket', 'polling'],
+        autoConnect: false,
+      });
+    }
+  }
   return socket;
 }
 
@@ -41,5 +70,6 @@ export function disconnectSocket() {
   if (socket) {
     socket.disconnect();
     socket = null;
+    tokenPromise = null;
   }
 }

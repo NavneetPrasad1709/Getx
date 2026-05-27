@@ -77,9 +77,15 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   async handleConnection(client: AuthenticatedSocket) {
     try {
+      // Try cookie first (works on Chrome/Firefox where same-site cookies
+      // flow on WS upgrades).  Fall back to the `token` query-param which
+      // the client sends when cookies are blocked (Safari ITP / iOS).
       const cookieHeader = client.handshake.headers.cookie ?? '';
       const cookies = parseCookie(cookieHeader);
-      const token = cookies['accessToken'];
+      const token =
+        cookies['accessToken'] ||
+        (client.handshake.auth?.token as string | undefined) ||
+        (client.handshake.query?.token as string | undefined);
       if (!token) {
         client.disconnect();
         return;

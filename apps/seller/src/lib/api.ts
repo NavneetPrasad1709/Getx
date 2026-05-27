@@ -1,12 +1,7 @@
 import axios, { AxiosError, type AxiosRequestConfig } from 'axios';
 
-const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL;
-if (!RAW_API_URL && process.env.NODE_ENV === 'production') {
-  throw new Error(
-    'NEXT_PUBLIC_API_URL must be defined at build time in production.',
-  );
-}
-const API_URL = RAW_API_URL || 'http://localhost:4000/api/v1';
+// Same-origin via Next.js rewrites — avoids Safari ITP blocking cross-site cookies.
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
 
 export const api = axios.create({
   baseURL: API_URL,

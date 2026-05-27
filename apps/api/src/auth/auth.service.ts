@@ -861,16 +861,17 @@ export class AuthService {
     const isProd = this.config.get<string>('NODE_ENV') === 'production';
     const domain = this.config.get<string>('COOKIE_DOMAIN');
 
-    /* sameSite=none is required when the API and the SPA live on different
-       registrable domains (api-production-XXXX.up.railway.app vs.
-       getx-web.vercel.app) — Lax wouldn't be sent on the cross-site fetch
-       at all. None requires Secure, which we already set in prod. Local dev
-       sticks with Lax over http://localhost so browsers don't reject the
-       cookie outright. */
+    /* In production the web app proxies API requests through Next.js rewrites
+       so every request is same-origin from the browser's perspective.  This
+       lets us use sameSite=lax, which Safari ITP does not block (ITP only
+       targets cross-site / SameSite=None cookies).  The domain is omitted so
+       cookies are host-only on whichever origin serves them (getx.live via
+       the Vercel proxy in prod, localhost in dev). */
     const baseOptions = {
       httpOnly: true,
       secure: isProd,
-      sameSite: (isProd ? 'none' : 'lax') as 'none' | 'lax',
+      sameSite: 'lax' as const,
+      path: '/',
       ...(domain ? { domain } : {}),
     };
 
@@ -889,13 +890,10 @@ export class AuthService {
     const isProd = this.config.get<string>('NODE_ENV') === 'production';
     const domain = this.config.get<string>('COOKIE_DOMAIN');
 
-    /* Must match the attributes the cookie was set with — browsers only
-       delete a cookie when (name + domain + path + sameSite/secure scope)
-       all match the originating Set-Cookie. */
     const opts = {
       httpOnly: true,
       secure: isProd,
-      sameSite: (isProd ? 'none' : 'lax') as 'none' | 'lax',
+      sameSite: 'lax' as const,
       path: '/',
       ...(domain ? { domain } : {}),
     };

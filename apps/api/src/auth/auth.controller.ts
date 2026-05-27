@@ -142,6 +142,18 @@ export class AuthController {
     return this.auth.session(req);
   }
 
+  // Returns the caller's current access token so the browser can forward it
+  // to the WebSocket handshake as a query param.  Safari ITP blocks cross-site
+  // cookies on the WS upgrade request, so the client fetches this via the
+  // same-origin Next.js proxy and passes it to socket.io `auth.token`.
+  @UseGuards(JwtAuthGuard)
+  @Get('ws-token')
+  @HttpCode(HttpStatus.OK)
+  async wsToken(@Req() req: Request) {
+    const cookies = req.cookies as Record<string, string> | undefined;
+    return { token: cookies?.accessToken ?? null };
+  }
+
   @UseGuards(JwtAuthGuard)
   @Patch('me/activate-seller')
   async activateSeller(@CurrentUser('id') userId: string) {
