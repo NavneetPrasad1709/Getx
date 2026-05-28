@@ -13,6 +13,15 @@ export class PrismaService
 {
   private readonly logger = new Logger(PrismaService.name);
 
+  constructor() {
+    // Explicitly pass DATABASE_URL so Prisma uses the value resolved by
+    // NestJS ConfigModule, not the auto-loaded packages/database/.env value
+    // (Prisma loads that file on import, before ConfigModule runs).
+    super({
+      datasources: { db: { url: process.env.DATABASE_URL } },
+    });
+  }
+
   async onModuleInit(): Promise<void> {
     try {
       await this.$connect();
