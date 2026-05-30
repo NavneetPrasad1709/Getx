@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
-import { AxiosError } from 'axios';
+import { AlertTriangle, Flame } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -16,6 +16,7 @@ import {
 } from '@getx/ui';
 import { AdminShell } from '@/components/admin-shell';
 import { useAdminOrder, useForceRelease, useRefundOrder } from '@/hooks/use-admin';
+import { extractMessage } from '@/lib/api-error';
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -24,14 +25,6 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
       <span className="font-medium text-sm text-right break-words">{value}</span>
     </div>
   );
-}
-
-function extractMessage(err: unknown): string | null {
-  if (err instanceof AxiosError) {
-    const data = err.response?.data as { message?: string } | undefined;
-    return data?.message ?? null;
-  }
-  return null;
 }
 
 export default function AdminOrderDetailPage() {
@@ -83,12 +76,13 @@ export default function AdminOrderDetailPage() {
     }
   };
 
+  // SAP-008: removed native confirm() — the "Confirm Refund ($X)" button
+  // in the inline form already serves as explicit confirmation.
   const handleRefund = async () => {
     if (refundReason.length < 5) {
       toast.error('Reason required (min 5 chars)');
       return;
     }
-    if (!confirm(`Refund $${order.buyerTotal.toFixed(2)} to buyer via payment provider?`)) return;
     try {
       await refund.mutateAsync({
         orderId: id,
@@ -111,6 +105,20 @@ export default function AdminOrderDetailPage() {
   return (
     <AdminShell>
       <div className="container max-w-4xl py-8">
+        {/* SAP-012: DISPUTED status banner gives admins clear action context */}
+        {order.status === 'DISPUTED' && (
+          <div className="flex items-start gap-3 rounded-xl bg-error/10 ring-1 ring-error/30 px-4 py-3 mb-5">
+            <Flame className="h-5 w-5 text-error mt-0.5 shrink-0" strokeWidth={2} />
+            <div>
+              <div className="font-semibold text-[14px] text-error">Disputed order</div>
+              <div className="text-[12.5px] text-error/80 mt-0.5">
+                Review evidence below, then either force-release escrow to the seller or refund
+                the buyer. Use the Admin Actions card.
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center gap-2 mb-2 flex-wrap">
           <span className="font-mono text-sm text-muted-foreground">{order.orderNumber}</span>
           <Badge variant="secondary">{order.status.replace('_', ' ')}</Badge>

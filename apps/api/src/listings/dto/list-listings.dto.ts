@@ -17,7 +17,9 @@ export const ListListingsBaseSchema = z.object({
 
     priceMin: z.coerce.number().min(0).optional(),
     priceMax: z.coerce.number().min(0).optional(),
-    search: z.string().max(100).optional(),
+    // RES-HIGH-010: min 3 chars — GIN trigram index requires ≥3-char n-grams;
+    // shorter terms force a full table scan even with pg_trgm installed.
+    search: z.string().min(3).max(100).optional(),
 
     // Account-specific filters (only applied when tabType=ACCOUNTS).
     levelMin: z.coerce.number().int().min(1).max(80).optional(),

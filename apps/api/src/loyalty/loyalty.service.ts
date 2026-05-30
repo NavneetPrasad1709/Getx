@@ -202,7 +202,7 @@ export class LoyaltyService {
 
     /* Cap is computed off the merchandise subtotal (Order.amount), not
        buyerTotal, so platform fee + tax stay payable in cash. */
-    const maxByCap = Math.floor((order.amount * REDEEM_CAP_PCT) / POINT_TO_USD);
+    const maxByCap = Math.floor((order.amount.toNumber() * REDEEM_CAP_PCT) / POINT_TO_USD);
     const maxPoints = Math.max(0, Math.min(user.loyaltyPoints, maxByCap));
     return {
       balance: user.loyaltyPoints,
@@ -210,10 +210,10 @@ export class LoyaltyService {
       maxUsd: maxPoints * POINT_TO_USD,
       alreadyApplied: {
         points: order.loyaltyPointsApplied,
-        usd: order.loyaltyUsdApplied,
+        usd: order.loyaltyUsdApplied.toNumber(),
       },
-      walletApplied: order.walletApplied,
-      blockedByWallet: order.walletApplied > 0,
+      walletApplied: order.walletApplied.toNumber(),
+      blockedByWallet: order.walletApplied.toNumber() > 0,
     };
   }
 
@@ -255,7 +255,7 @@ export class LoyaltyService {
           'Points can only be applied before payment',
         );
       }
-      if (order.walletApplied > 0) {
+      if (order.walletApplied.toNumber() > 0) {
         throw new BadRequestException(
           'GETX Coins already applied — remove them before redeeming points',
         );
@@ -273,7 +273,7 @@ export class LoyaltyService {
       if (!user) throw new NotFoundException();
 
       const maxByCap = Math.floor(
-        (order.amount * REDEEM_CAP_PCT) / POINT_TO_USD,
+        (order.amount.toNumber() * REDEEM_CAP_PCT) / POINT_TO_USD,
       );
       const applied = Math.min(pointsRequested, user.loyaltyPoints, maxByCap);
       if (applied <= 0) {
@@ -308,7 +308,7 @@ export class LoyaltyService {
         pointsApplied: applied,
         usdValue,
         newBalance,
-        chargeable: Math.max(0, order.buyerTotal - usdValue),
+        chargeable: Math.max(0, order.buyerTotal.toNumber() - usdValue),
       };
     });
   }

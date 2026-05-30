@@ -30,6 +30,9 @@ const ESCROW_HOLD_DAYS = 3;
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
   private readonly providers: Record<ProviderName, PaymentProvider>;
+  // Resolved once at boot — provider is determined by static config, not per-request.
+  // This eliminates repeated env-var lookups on every checkout call.
+  private readonly activeProvider: PaymentProvider;
 
   constructor(
     private config: ConfigService,
@@ -42,34 +45,30 @@ export class PaymentsService {
     stripe: StripePaymentProvider,
     private loyalty: LoyaltyService,
   ) {
-    this.providers = {
-      mock,
-      stripe,
-    };
+    this.providers = { mock, stripe };
 
+    const isProd = process.env.NODE_ENV === 'production';
     const hasStripe = !!config.get<string>('STRIPE_SECRET_KEY');
+
+    if (!hasStripe && isProd) {
+      throw new Error(
+        'STRIPE_SECRET_KEY missing in production — refusing to start without a real payment provider.',
+      );
+    }
+
+    this.activeProvider = hasStripe ? stripe : mock;
     this.logger.log(
-      `Payment providers — stripe:${hasStripe} (mock fallback active outside production)`,
+      `Payment provider resolved at boot: ${this.activeProvider.name} (stripe:${hasStripe})`,
     );
   }
 
   /**
-   * Provider routing — Stripe is the only real checkout provider.
-   * Stripe handles every currency we accept (USD, INR, EUR, etc.)
-   * via its global card / wallet rails. Without `STRIPE_SECRET_KEY`
-   * we fall through to the `mock` provider for local dev; production
-   * refuses to route through mock and throws so the misconfiguration
-   * is visible at the first checkout attempt.
+   * Returns the active payment provider. Currency parameter is reserved for
+   * future multi-provider routing (e.g. local payment rails per region); for
+   * now Stripe handles all currencies globally.
    */
-  private resolveProvider(_currency: string): PaymentProvider {
-    const isProd = process.env.NODE_ENV === 'production';
-    const hasStripe = !!this.config.get<string>('STRIPE_SECRET_KEY');
-    if (!hasStripe && isProd) {
-      throw new Error(
-        'STRIPE_SECRET_KEY missing in production — refusing to route checkout through the mock provider.',
-      );
-    }
-    return hasStripe ? this.providers.stripe : this.providers.mock;
+  private resolveProvider(_currency?: string): PaymentProvider {
+    return this.activeProvider;
   }
 
   async createCheckoutSession(
@@ -98,8 +97,8 @@ export class PaymentsService {
        debited at apply-time (WalletService.applyToOrder /
        LoyaltyService.applyToOrder) and are mutually exclusive by spec. */
     const creditApplied =
-      (order.walletApplied ?? 0) + (order.loyaltyUsdApplied ?? 0);
-    const chargeable = Math.max(0, order.buyerTotal - creditApplied);
+      (order.walletApplied?.toNumber() ?? 0) + (order.loyaltyUsdApplied?.toNumber() ?? 0);
+    const chargeable = Math.max(0, order.buyerTotal.toNumber() - creditApplied);
     const opts: CheckoutOptions = {
       orderId: order.id,
       amount: Math.round(chargeable * 100),
@@ -162,11 +161,22 @@ export class PaymentsService {
   }
 
   /**
-   * Legacy multi-provider webhook entry. Kept behind a feature flag for
-   * back-compat with provider dashboards still hitting /payments/webhook;
-   * new integrations MUST use /payments/webhook/:provider.
+   * Legacy multi-provider webhook entry. Hard-disabled in production — any
+   * remaining provider dashboards must migrate to /payments/webhook/:provider.
+   * Kept in dev for backward-compat with local tooling.
    */
   async handleWebhook(headers: Record<string, string>, body: string) {
+    // PAY-HIGH-023: block legacy endpoint in production — mock parseWebhook
+    // accepts any JSON body and would be a wide-open attack surface
+    if (process.env.NODE_ENV === 'production') {
+      this.logger.error(
+        'Legacy /payments/webhook called in production — rejecting. Update provider dashboards to use /payments/webhook/:provider.',
+      );
+      throw new BadRequestException(
+        'Legacy webhook endpoint disabled. Use /payments/webhook/:provider.',
+      );
+    }
+
     const order: ProviderName[] = ['stripe', 'mock'];
 
     let event: WebhookEvent | null = null;
@@ -193,7 +203,11 @@ export class PaymentsService {
   private providerHasSecret(name: ProviderName): boolean {
     switch (name) {
       case 'stripe':
-        return !!this.config.get<string>('STRIPE_WEBHOOK_SECRET');
+        // PAY-HIGH-022: require BOTH secrets together — not just the webhook secret
+        return (
+          !!this.config.get<string>('STRIPE_SECRET_KEY') &&
+          !!this.config.get<string>('STRIPE_WEBHOOK_SECRET')
+        );
       case 'mock':
         /* Mock is dev-only — its webhook handler is reachable from the
            controller's /webhook/:provider route which itself runs only
@@ -203,53 +217,81 @@ export class PaymentsService {
   }
 
   /**
-   * Idempotency gate + event router. Inserts a WebhookEvent row keyed on
-   * (provider, externalId); a duplicate hit returns the prior outcome
-   * unchanged so a replayed refund or failure never re-mutates state.
+   * Idempotency gate + event router.
+   *
+   * PAY-CRIT-001: WebhookEvent row is written INSIDE each handler's
+   * $transaction so a DB error in the handler rolls back both the business
+   * state AND the idempotency record atomically. A pre-insert (the old
+   * approach) meant a transient handler error permanently swallowed retries.
+   *
+   * PAY-MED-026: Events with no externalId are rejected before dispatch —
+   * an empty string would skip the unique constraint and run the handler on
+   * every retry without recording anything.
    */
   private async dispatchEvent(provider: PaymentProvider, event: WebhookEvent) {
     this.logger.log(
       `Webhook received from ${provider.name}: ${event.type} (${event.externalId})`,
     );
 
-    if (event.externalId) {
-      try {
-        await this.prisma.webhookEvent.create({
-          data: {
-            provider: provider.name,
-            externalId: event.externalId,
-            type: event.type,
-          },
-        });
-      } catch (err) {
-        /* P2002 on the (provider, externalId) unique index means we've
-           already processed this event — return idempotent ack instead
-           of re-running the handler. */
-        if (
-          err &&
-          typeof err === 'object' &&
-          'code' in err &&
-          (err as { code?: string }).code === 'P2002'
-        ) {
-          this.logger.log(
-            `Webhook idempotent skip (already processed): ${provider.name}/${event.externalId}`,
-          );
-          return { success: true, idempotent: true };
-        }
-        throw err;
-      }
+    // Reject events with no stable external ID — can't safely deduplicate them
+    if (!event.externalId) {
+      this.logger.error(
+        `Webhook from ${provider.name} has no externalId — rejected (${event.type})`,
+      );
+      return { success: false, error: 'Missing externalId' };
     }
 
-    switch (event.type) {
-      case 'checkout.completed':
-        return this.processCheckoutCompleted(event, provider);
-      case 'payment.failed':
-        return this.processPaymentFailed(event);
-      case 'refund.completed':
-        return this.processRefundCompleted(event);
-      default:
-        this.logger.log(`Unhandled webhook type: ${event.type}`);
-        return { success: true, ignored: true };
+    // Fast pre-check: common replay path avoids running the handler at all
+    const existing = await this.prisma.webhookEvent.findUnique({
+      where: {
+        provider_externalId: {
+          provider: provider.name,
+          externalId: event.externalId,
+        },
+      },
+    });
+    if (existing) {
+      this.logger.log(
+        `Webhook idempotent skip (already processed): ${provider.name}/${event.externalId}`,
+      );
+      return { success: true, idempotent: true };
+    }
+
+    try {
+      switch (event.type) {
+        case 'checkout.completed':
+          return await this.processCheckoutCompleted(event, provider);
+        case 'payment.failed':
+          return await this.processPaymentFailed(event, provider.name);
+        case 'refund.completed':
+          return await this.processRefundCompleted(event, provider.name);
+        default:
+          // Record unknown events so at least the delivery is traceable
+          await this.prisma.webhookEvent.create({
+            data: {
+              provider: provider.name,
+              externalId: event.externalId,
+              type: event.type,
+            },
+          });
+          this.logger.log(`Unhandled webhook type: ${event.type}`);
+          return { success: true, ignored: true };
+      }
+    } catch (err) {
+      // P2002 inside a handler's $transaction means a concurrent request won
+      // the race and already committed — safe to treat as idempotent
+      if (
+        err &&
+        typeof err === 'object' &&
+        'code' in err &&
+        (err as { code?: string }).code === 'P2002'
+      ) {
+        this.logger.log(
+          `Webhook idempotent (concurrent commit): ${provider.name}/${event.externalId}`,
+        );
+        return { success: true, idempotent: true };
+      }
+      throw err;
     }
   }
 
@@ -286,6 +328,32 @@ export class PaymentsService {
       return { success: true, idempotent: true };
     }
 
+    // PAY-CRIT-003: verify amount and currency match what the order expects.
+    // A $1 Stripe session against a $1000 order must be rejected, not auto-completed.
+    const creditApplied =
+      (order.walletApplied?.toNumber() ?? 0) +
+      (order.loyaltyUsdApplied?.toNumber() ?? 0);
+    const expectedUsd = Math.max(0, order.buyerTotal.toNumber() - creditApplied);
+    const expectedCents = Math.round(expectedUsd * 100);
+    if (
+      event.currency &&
+      event.currency.toUpperCase() !== order.currency.toUpperCase()
+    ) {
+      this.logger.error(
+        `Webhook currency mismatch for ${orderId}: expected ${order.currency} got ${event.currency}`,
+      );
+      return { success: false, error: 'Currency mismatch' };
+    }
+    if (typeof event.amount === 'number') {
+      const receivedCents = Math.round(event.amount * 100);
+      if (Math.abs(receivedCents - expectedCents) > 1) {
+        this.logger.error(
+          `Webhook amount mismatch for ${orderId}: expected ${expectedCents}¢ got ${receivedCents}¢`,
+        );
+        return { success: false, error: 'Amount mismatch' };
+      }
+    }
+
     const autoReleaseAt = new Date(
       Date.now() + ESCROW_HOLD_DAYS * 24 * 60 * 60 * 1000,
     );
@@ -302,6 +370,16 @@ export class PaymentsService {
       : Prisma.JsonNull;
 
     await this.prisma.$transaction(async (tx) => {
+      // PAY-CRIT-001: write idempotency record INSIDE the transaction so a
+      // handler error rolls back both state and the record atomically
+      await tx.webhookEvent.create({
+        data: {
+          provider: provider.name,
+          externalId: event.externalId,
+          type: event.type,
+        },
+      });
+
       await tx.order.update({
         where: { id: orderId },
         data: {
@@ -309,7 +387,13 @@ export class PaymentsService {
           escrowStatus: 'HELD',
           paymentCapturedAt: new Date(),
           paymentTransactionId: event.externalId,
-          paymentMetadata: event.rawPayload as Prisma.InputJsonValue,
+          // PAY-HIGH-025: merge provider event into existing metadata instead
+          // of replacing it — preserves snapshotTitle/snapshot/quantity that
+          // orders.service wrote at creation time
+          paymentMetadata: {
+            ...(order.paymentMetadata as object ?? {}),
+            providerEvent: event.rawPayload,
+          } as Prisma.InputJsonValue,
           autoReleaseAt,
           taxAmount,
           taxBreakdown,
@@ -449,7 +533,7 @@ export class PaymentsService {
     return { success: true };
   }
 
-  private async processPaymentFailed(event: WebhookEvent) {
+  private async processPaymentFailed(event: WebhookEvent, providerName: string) {
     const orderId = event.metadata.orderId ?? event.metadata.order_id;
     if (!orderId) return { success: false };
 
@@ -460,10 +544,12 @@ export class PaymentsService {
       return { success: true, idempotent: true };
     }
 
-    /* Refund any pre-paid credits atomically with the cancel so the
-       buyer is never left with applied-but-spent points/coins. Order
-       transitions to CANCELLED only after both refunds settle. */
     await this.prisma.$transaction(async (tx) => {
+      // PAY-CRIT-001: idempotency record inside the transaction
+      await tx.webhookEvent.create({
+        data: { provider: providerName, externalId: event.externalId, type: event.type },
+      });
+
       await this.loyalty.refundOnCancel(tx, orderId);
       /* Wallet refund — uses the same tx so a failure rolls back the
          loyalty restore too. */
@@ -475,30 +561,27 @@ export class PaymentsService {
           currency: true,
           orderNumber: true,
           productListingId: true,
-          paymentMetadata: true,
+          // PAY-HIGH-024: use the dedicated quantity column — reliable even
+          // after paymentMetadata is overwritten by processCheckoutCompleted
+          quantity: true,
         },
       });
       /* Restore the reserved listing stock — order creation took it
          out of inventory and the cancellation must put it back so the
          listing doesn't lose a unit to a buyer who never paid. */
       if (fresh?.productListingId) {
-        const meta = fresh.paymentMetadata as { quantity?: number } | null;
-        const qty =
-          typeof meta?.quantity === 'number' && meta.quantity > 0
-            ? meta.quantity
-            : 1;
         await tx.productListing.update({
           where: { id: fresh.productListingId },
-          data: { stock: { increment: qty } },
+          data: { stock: { increment: fresh.quantity ?? 1 } },
         });
       }
-      if (fresh && fresh.walletApplied > 0) {
+      if (fresh && fresh.walletApplied.toNumber() > 0) {
         const buyer = await tx.user.findUnique({
           where: { id: fresh.buyerId },
           select: { buyerWallet: true },
         });
         if (buyer) {
-          const newBalance = buyer.buyerWallet + fresh.walletApplied;
+          const newBalance = buyer.buyerWallet.toNumber() + fresh.walletApplied.toNumber();
           await tx.user.update({
             where: { id: fresh.buyerId },
             data: { buyerWallet: { increment: fresh.walletApplied } },
@@ -531,29 +614,99 @@ export class PaymentsService {
     return { success: true };
   }
 
-  private async processRefundCompleted(event: WebhookEvent) {
+  private async processRefundCompleted(event: WebhookEvent, providerName: string) {
     const orderId = event.metadata.orderId ?? event.metadata.order_id;
     if (!orderId) return { success: false };
 
-    // Idempotency: webhooks can be redelivered. Treat a replay as a no-op
-    // instead of overwriting refundTransactionId / refundedAt, which would
-    // break reconciliation if the second event carries a different id.
-    const existing = await this.prisma.order.findUnique({
+    const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      select: { status: true },
+      select: {
+        status: true,
+        escrowStatus: true,
+        sellerId: true,
+        sellerAmount: true,
+        buyerTotal: true,
+        refundAmount: true,
+        currency: true,
+        orderNumber: true,
+      },
     });
-    if (existing?.status === 'REFUNDED') {
-      return { success: true, idempotent: true };
+    if (!order) return { success: false, error: 'Order not found' };
+    if (order.status === 'REFUNDED') return { success: true, idempotent: true };
+
+    // PAY-MED-028: compare provider-reported amount against admin-set refundAmount.
+    // Mismatch means the provider applied a different amount (e.g. partial override).
+    // Log as warning and persist the actual provider amount so reconciliation is accurate.
+    if (
+      typeof event.amount === 'number' &&
+      order.refundAmount !== null &&
+      order.refundAmount !== undefined
+    ) {
+      const expectedCents = Math.round(order.refundAmount.toNumber() * 100);
+      const receivedCentsMed = Math.round(event.amount * 100);
+      if (Math.abs(receivedCentsMed - expectedCents) > 1) {
+        this.logger.warn(
+          `Refund amount mismatch for order ${order.orderNumber}: admin set ${expectedCents}¢, provider reported ${receivedCentsMed}¢ — persisting provider amount`,
+        );
+        await this.prisma.order.update({
+          where: { id: orderId },
+          data: { refundAmount: event.amount },
+        });
+      }
     }
 
-    await this.prisma.order.update({
-      where: { id: orderId },
-      data: {
-        status: 'REFUNDED',
-        escrowStatus: 'REFUNDED',
-        refundedAt: new Date(),
-        refundTransactionId: event.externalId,
-      },
+    // PAY-CRIT-009: if escrow was already RELEASED (seller paid), claw back.
+    // Determine full vs partial by comparing received amount to order total.
+    const receivedCents =
+      typeof event.amount === 'number' ? Math.round(event.amount * 100) : null;
+    const orderCents = Math.round(order.buyerTotal.toNumber() * 100);
+    const isFullRefund =
+      receivedCents === null || receivedCents >= orderCents - 1;
+
+    await this.prisma.$transaction(async (tx) => {
+      // PAY-CRIT-001: idempotency record inside the transaction
+      await tx.webhookEvent.create({
+        data: { provider: providerName, externalId: event.externalId, type: event.type },
+      });
+
+      // Claw back seller wallet when escrow was already released and this is
+      // a full refund — platform absorbs the loss and debits from sellerWallet
+      if (isFullRefund && order.escrowStatus === 'RELEASED') {
+        const seller = await tx.user.findUnique({
+          where: { id: order.sellerId },
+          select: { sellerWallet: true },
+        });
+        if (seller) {
+          const clawback = order.sellerAmount.toNumber();
+          const newWallet = Math.max(0, seller.sellerWallet.toNumber() - clawback);
+          await tx.user.update({
+            where: { id: order.sellerId },
+            data: { sellerWallet: { decrement: clawback } },
+          });
+          await tx.walletTransaction.create({
+            data: {
+              userId: order.sellerId,
+              type: 'CHARGEBACK',
+              amount: -clawback,
+              currency: order.currency,
+              orderId,
+              balanceBefore: seller.sellerWallet,
+              balanceAfter: newWallet,
+              description: `Chargeback clawback for refunded order ${order.orderNumber}`,
+            },
+          });
+        }
+      }
+
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: 'REFUNDED',
+          escrowStatus: 'REFUNDED',
+          refundedAt: new Date(),
+          refundTransactionId: event.externalId,
+        },
+      });
     });
 
     return { success: true };
@@ -589,7 +742,11 @@ export class PaymentsService {
     orderId: string,
     callerId: string,
   ) {
-    if (process.env.NODE_ENV === 'production') {
+    // PAY-MED-030: explicit opt-in flag required — NODE_ENV check alone lets
+    // staging/test envs accept free orders if NODE_ENV isn't set to 'production'
+    const mockEnabled =
+      this.config.get<string>('PAYMENTS_ENABLE_MOCK') === 'true';
+    if (!mockEnabled || process.env.NODE_ENV === 'production') {
       throw new NotFoundException();
     }
 
@@ -609,7 +766,7 @@ export class PaymentsService {
     const fakeEvent: WebhookEvent = {
       type: 'checkout.completed',
       externalId: sessionId,
-      amount: Math.round(order.buyerTotal * 100),
+      amount: Math.round(order.buyerTotal.toNumber() * 100),
       currency: order.currency,
       metadata: { orderId },
       rawPayload: { simulated: true, sessionId },

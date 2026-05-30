@@ -4,6 +4,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import type { Request } from 'express';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getRedisClient } from '../../common/redis.factory';
 
 export interface JwtPayload {
   sub: string;
@@ -13,11 +14,34 @@ export interface JwtPayload {
   exp?: number;
 }
 
-/* In-memory throttle for lastSeenAt writes — never touch the DB more than
-   once per user per LAST_SEEN_THROTTLE_MS. Matches the SocketRateLimiter
-   pattern already in use; swap to Redis when the API goes multi-replica. */
-const LAST_SEEN_THROTTLE_MS = 60 * 1000;
-const lastSeenWrites = new Map<string, number>();
+const LAST_SEEN_TTL_SECONDS = 60;
+
+// Fallback in-memory throttle used when Redis is not configured (local dev /
+// single-replica). With Redis, each replica independently checks the shared
+// key so the 60s window is enforced globally, not per-process.
+const lastSeenFallbackMap = new Map<string, number>();
+
+async function shouldUpdateLastSeen(userId: string): Promise<boolean> {
+  const redis = getRedisClient();
+  if (redis) {
+    // SET key 1 EX 60 NX — only succeeds if the key doesn't already exist
+    const result = await redis.set(
+      `lastseen:${userId}`,
+      '1',
+      'EX',
+      LAST_SEEN_TTL_SECONDS,
+      'NX',
+    );
+    return result === 'OK'; // 'OK' = key was set (not already present)
+  }
+
+  // Fallback: in-memory throttle (per-replica — acceptable for dev)
+  const now = Date.now();
+  const last = lastSeenFallbackMap.get(userId) ?? 0;
+  if (now - last < LAST_SEEN_TTL_SECONDS * 1000) return false;
+  lastSeenFallbackMap.set(userId, now);
+  return true;
+}
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -38,6 +62,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       ]),
       ignoreExpiration: false,
       secretOrKey: secret,
+      algorithms: ['HS256'],
+      issuer: 'getx.live',
+      audience: 'getx-api',
     });
   }
 
@@ -88,16 +115,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   /* Fire-and-forget — never blocks the request, never crashes the auth flow.
-     Errors are swallowed because lastSeenAt is a soft-signal field. */
+     When REDIS_URL is set, the 60s gate is shared across all API replicas via
+     Redis SETNX so lastSeenAt writes are deduplicated globally, not per-pod. */
   private touchLastSeen(userId: string): void {
-    const now = Date.now();
-    const lastWrite = lastSeenWrites.get(userId) ?? 0;
-    if (now - lastWrite < LAST_SEEN_THROTTLE_MS) return;
-    lastSeenWrites.set(userId, now);
-    this.prisma.user
-      .update({ where: { id: userId }, data: { lastSeenAt: new Date(now) } })
-      .catch(() => {
-        /* swallow — stale lastSeenAt is acceptable */
-      });
+    shouldUpdateLastSeen(userId)
+      .then((should) => {
+        if (!should) return;
+        return this.prisma.user
+          .update({ where: { id: userId }, data: { lastSeenAt: new Date() } })
+          .catch(() => { /* swallow — stale lastSeenAt is acceptable */ });
+      })
+      .catch(() => { /* swallow Redis errors */ });
   }
 }

@@ -1,11 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Activity,
   AlertTriangle,
-  ChevronLeft,
-  ChevronRight,
   ScrollText,
   Search,
   ShieldAlert,
@@ -13,6 +11,19 @@ import {
 import { Input, Skeleton, motion } from '@getx/ui';
 import { AdminShell } from '@/components/admin-shell';
 import { useAdminAuditLogs } from '@/hooks/use-admin';
+import { useDebounce } from '@/hooks/use-debounce';
+import { PaginationButton } from '@/components/ui/pagination-button';
+
+// SAP-009: partial IP masking — last two octets hidden to limit PII exposure
+function maskIp(ip: string | null): string {
+  if (!ip) return '—';
+  const v4 = ip.split('.');
+  if (v4.length === 4) return `${v4[0]}.${v4[1]}.*.*`;
+  // IPv6 — hide last two groups
+  const v6 = ip.split(':');
+  if (v6.length >= 2) return `${v6.slice(0, -2).join(':')}:****`;
+  return ip;
+}
 
 /* GETX Admin — Audit logs.
    ─────────────────────────────────────────────────────────────────────
@@ -59,11 +70,16 @@ export default function AdminAuditLogsPage() {
   const [severityFilter, setSeverityFilter] = useState('');
   const [userIdFilter, setUserIdFilter] = useState('');
 
+  // SAP-004 / SAP-005: debounce text fields — API fires only when user pauses
+  const debouncedAction = useDebounce(actionFilter);
+  const debouncedUserId = useDebounce(userIdFilter);
+  useEffect(() => { setPage(1); }, [debouncedAction, debouncedUserId]);
+
   const { data, isLoading } = useAdminAuditLogs({
     page,
-    action: actionFilter || undefined,
+    action: debouncedAction || undefined,
     severity: severityFilter || undefined,
-    userId: userIdFilter || undefined,
+    userId: debouncedUserId || undefined,
   });
 
   const rows = (data?.data ?? []) as AuditLogRow[];
@@ -130,10 +146,7 @@ export default function AdminAuditLogsPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <input
                 value={actionFilter}
-                onChange={(e) => {
-                  setActionFilter(e.target.value);
-                  setPage(1);
-                }}
+                onChange={(e) => setActionFilter(e.target.value)}
                 placeholder="Action contains…  (e.g., ORDER_REFUND)"
                 className="w-full h-9 pl-9 pr-3 rounded-full bg-muted/25 ring-1 ring-transparent focus:bg-surface focus:ring-primary/35 text-[13px] outline-none transition-all"
               />
@@ -141,10 +154,7 @@ export default function AdminAuditLogsPage() {
             <Input
               placeholder="User ID"
               value={userIdFilter}
-              onChange={(e) => {
-                setUserIdFilter(e.target.value);
-                setPage(1);
-              }}
+              onChange={(e) => setUserIdFilter(e.target.value)}
               className="h-9 w-full sm:w-56 rounded-full text-[12.5px]"
             />
           </div>
@@ -244,7 +254,8 @@ function AuditRow({ log }: { log: AuditLogRow }) {
           <div className="font-mono uppercase tracking-[0.18em] text-muted-foreground font-bold mb-0.5">
             IP
           </div>
-          <div className="font-mono text-foreground truncate">{log.ipAddress ?? '—'}</div>
+          {/* SAP-009: last two octets masked */}
+          <div className="font-mono text-foreground truncate">{maskIp(log.ipAddress)}</div>
         </div>
         <div className="font-mono text-[10.5px] text-muted-foreground tabular-nums shrink-0 text-right">
           {new Date(log.createdAt).toLocaleString([], {
@@ -256,44 +267,6 @@ function AuditRow({ log }: { log: AuditLogRow }) {
         </div>
       </div>
     </div>
-  );
-}
-
-function PaginationButton({
-  disabled,
-  onClick,
-  dir,
-}: {
-  disabled: boolean;
-  onClick: () => void;
-  dir: 'prev' | 'next';
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`
-        inline-flex items-center gap-1 h-9 px-3.5 rounded-full text-[12.5px] font-semibold transition-colors
-        ${
-          disabled
-            ? 'bg-muted/15 text-muted-foreground/50 cursor-not-allowed'
-            : 'bg-muted/25 hover:bg-muted/40 ring-1 ring-border text-foreground'
-        }
-      `}
-    >
-      {dir === 'prev' ? (
-        <>
-          <ChevronLeft className="h-3.5 w-3.5" />
-          Previous
-        </>
-      ) : (
-        <>
-          Next
-          <ChevronRight className="h-3.5 w-3.5" />
-        </>
-      )}
-    </button>
   );
 }
 

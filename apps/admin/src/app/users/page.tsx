@@ -1,13 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ArrowRight,
   BadgeCheck,
   Ban,
-  ChevronLeft,
-  ChevronRight,
   Mail,
   Search,
   ShieldAlert,
@@ -20,6 +18,16 @@ import {
 import { Skeleton, motion } from '@getx/ui';
 import { AdminShell } from '@/components/admin-shell';
 import { useAdminUsers, type AdminUserRow } from '@/hooks/use-admin';
+import { useDebounce } from '@/hooks/use-debounce';
+import { PaginationButton } from '@/components/ui/pagination-button';
+
+// SAP-010: partial email masking — admins see enough to identify the account
+// without the full address being visible in transient shoulder-surf situations.
+function maskEmail(email: string): string {
+  const at = email.indexOf('@');
+  if (at < 2) return email;
+  return `${email.slice(0, 2)}${'•'.repeat(Math.min(4, at - 2))}${email.slice(at)}`;
+}
 
 /* GETX Admin — Users.
    ─────────────────────────────────────────────────────────────────────
@@ -50,9 +58,13 @@ export default function UsersPage() {
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [roleFilter, setRoleFilter] = useState<string>('');
 
+  // SAP-003: debounce so the API is hit only when the user stops typing
+  const debouncedSearch = useDebounce(search);
+  useEffect(() => { setPage(1); }, [debouncedSearch]);
+
   const { data, isLoading } = useAdminUsers({
     page,
-    search,
+    search: debouncedSearch || undefined,
     status: statusFilter || undefined,
     role: roleFilter || undefined,
   });
@@ -92,10 +104,7 @@ export default function UsersPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <input
                 value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                  setPage(1);
-                }}
+                onChange={(e) => setSearch(e.target.value)}
                 placeholder="Email, username, or name"
                 className="w-full h-9 pl-9 pr-3 rounded-full bg-muted/25 ring-1 ring-transparent focus:bg-surface focus:ring-primary/35 text-[13px] outline-none transition-all"
               />
@@ -225,7 +234,8 @@ function UserRow({ user }: { user: AdminUserRow }) {
             </div>
             <div className="text-[11.5px] text-muted-foreground truncate flex items-center gap-1">
               <Mail className="h-3 w-3" />
-              {user.email}
+              {/* SAP-010: partial mask — enough to identify, not full exposure */}
+              {maskEmail(user.email)}
             </div>
             <div className="mt-1 flex items-center gap-1.5 flex-wrap">
               <StatusPill status={user.status} />
@@ -322,44 +332,6 @@ function KycPill({ level }: { level: string }) {
       <ShieldCheck className="h-2.5 w-2.5" strokeWidth={2.5} />
       KYC {level}
     </span>
-  );
-}
-
-function PaginationButton({
-  disabled,
-  onClick,
-  dir,
-}: {
-  disabled: boolean;
-  onClick: () => void;
-  dir: 'prev' | 'next';
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`
-        inline-flex items-center gap-1 h-9 px-3.5 rounded-full text-[12.5px] font-semibold transition-colors
-        ${
-          disabled
-            ? 'bg-muted/15 text-muted-foreground/50 cursor-not-allowed'
-            : 'bg-muted/25 hover:bg-muted/40 ring-1 ring-border text-foreground'
-        }
-      `}
-    >
-      {dir === 'prev' ? (
-        <>
-          <ChevronLeft className="h-3.5 w-3.5" />
-          Previous
-        </>
-      ) : (
-        <>
-          Next
-          <ChevronRight className="h-3.5 w-3.5" />
-        </>
-      )}
-    </button>
   );
 }
 

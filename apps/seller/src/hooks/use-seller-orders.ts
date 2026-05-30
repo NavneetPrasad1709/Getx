@@ -124,15 +124,28 @@ export function useLiveOrderEvents() {
   const qc = useQueryClient();
   useEffect(() => {
     const socket = getSocket();
-    const onNewOrder = (payload: { orderId: string }) => {
+
+    const invalidate = (payload?: { orderId?: string }) => {
       qc.invalidateQueries({ queryKey: ['seller-orders'] });
       if (payload?.orderId) {
         qc.invalidateQueries({ queryKey: ['seller-orders', payload.orderId] });
       }
     };
-    socket.on('order:new', onNewOrder);
+
+    // SAP-HIGH-026: subscribe to all order lifecycle events so seller UI
+    // reflects disputes, refunds, and status changes without manual refresh
+    socket.on('order:new', invalidate);
+    socket.on('order:status_changed', invalidate);
+    socket.on('order:disputed', invalidate);
+    socket.on('order:refunded', invalidate);
+    socket.on('order:auto_released', invalidate);
+
     return () => {
-      socket.off('order:new', onNewOrder);
+      socket.off('order:new', invalidate);
+      socket.off('order:status_changed', invalidate);
+      socket.off('order:disputed', invalidate);
+      socket.off('order:refunded', invalidate);
+      socket.off('order:auto_released', invalidate);
     };
   }, [qc]);
 }

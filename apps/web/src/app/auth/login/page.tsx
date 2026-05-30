@@ -52,8 +52,9 @@ const Schema = z.object({
 
 type FormData = z.infer<typeof Schema>;
 
-/* Whitelisted absolute origins we allow `next` to point to. Anything else
-   absolute is collapsed to "/" to prevent open-redirect attacks. */
+/* Whitelisted absolute origins we allow `next` to point to. Built from
+   the public app URLs. Anything not matched is collapsed to "/" to
+   prevent open-redirect attacks. */
 const TRUSTED_NEXT_ORIGINS = new Set(
   [
     process.env.NEXT_PUBLIC_SELLER_URL,
@@ -71,9 +72,30 @@ const TRUSTED_NEXT_ORIGINS = new Set(
     .filter(Boolean),
 );
 
+/* Our own apex domains. We trust any HTTPS subdomain of these in
+   addition to the explicit whitelist above. Reason: NEXT_PUBLIC_* are
+   inlined at *build* time, so if the seller/admin URL env var is absent
+   from the web project's build env, TRUSTED_NEXT_ORIGINS comes up empty
+   and a post-login redirect to e.g. seller.getx.live silently falls
+   back to "/". This suffix check keeps cross-app redirects working
+   without depending on those env vars being present at build. */
+const TRUSTED_BASE_DOMAINS = ['getx.live'];
+
+function isTrustedOrigin(parsed: URL): boolean {
+  if (TRUSTED_NEXT_ORIGINS.has(parsed.origin)) return true;
+  const host = parsed.hostname;
+  // Dev: allow localhost on any port.
+  if (host === 'localhost' || host === '127.0.0.1') return true;
+  // Production: only HTTPS subdomains of our own apex domains.
+  if (parsed.protocol !== 'https:') return false;
+  return TRUSTED_BASE_DOMAINS.some(
+    (base) => host === base || host.endsWith(`.${base}`),
+  );
+}
+
 /* Returns a safe redirect target for the `next` query param.
    - Relative path → returned as-is (router.push handles).
-   - Absolute URL with origin in TRUSTED_NEXT_ORIGINS → returned as-is
+   - Absolute URL with a trusted origin → returned as-is
      (caller uses window.location for cross-origin).
    - Anything else → "/" fallback. */
 function safeNext(raw: string | null): { url: string; absolute: boolean } {
@@ -81,7 +103,7 @@ function safeNext(raw: string | null): { url: string; absolute: boolean } {
   if (raw.startsWith('/') && !raw.startsWith('//')) return { url: raw, absolute: false };
   try {
     const parsed = new URL(raw);
-    if (TRUSTED_NEXT_ORIGINS.has(parsed.origin)) {
+    if (isTrustedOrigin(parsed)) {
       return { url: raw, absolute: true };
     }
   } catch {

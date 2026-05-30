@@ -17,6 +17,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Throttle } from '@nestjs/throttler';
 import { PaymentsService } from './payments.service';
 import type { ProviderName } from './providers/payment.interface';
 import { firstOriginFromCsv } from '../common/config-helpers';
@@ -164,6 +165,9 @@ export class PaymentsController {
     res.redirect(`${webUrl}/orders/${body.orderId}?payment=success`);
   }
 
+  // PAY-MED-034: rate-limit checkout creation — prevents attacker from
+  // saturating Stripe's per-account rate limit or accruing cost via spam
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('checkout/:orderId')
   createCheckout(
     @Param('orderId') orderId: string,

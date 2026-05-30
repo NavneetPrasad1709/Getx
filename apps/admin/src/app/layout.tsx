@@ -6,6 +6,7 @@ import { ThemeProvider, Toaster, PageTransition } from '@getx/ui';
 import { AuthProvider } from '@/hooks/use-auth';
 import { QueryProvider } from '@/components/query-provider';
 import { AdminGuard } from '@/components/admin-guard';
+import { StepUpProvider } from '@/components/step-up-provider';
 import './globals.css';
 
 /* Self-host fonts so admin never falls back to a serif on slow Google
@@ -51,7 +52,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <QueryProvider>
             <AuthProvider>
               <AdminGuard>
-                <PageTransition>{children}</PageTransition>
+                <StepUpProvider>
+                  <PageTransition>{children}</PageTransition>
+                </StepUpProvider>
               </AdminGuard>
             </AuthProvider>
           </QueryProvider>

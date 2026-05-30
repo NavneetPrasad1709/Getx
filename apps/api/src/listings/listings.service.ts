@@ -441,8 +441,8 @@ export class ListingsService {
         deletedAt: null,
         id: { not: listingId },
         price: {
-          gte: listing.price * 0.5,
-          lte: listing.price * 1.5,
+          gte: listing.price.toNumber() * 0.5,
+          lte: listing.price.toNumber() * 1.5,
         },
       },
       orderBy: { viewCount: 'desc' },
@@ -463,7 +463,7 @@ export class ListingsService {
 
     const seller = await this.prisma.user.findUnique({
       where: { id: sellerId },
-      select: { isSeller: true, status: true },
+      select: { isSeller: true, status: true, kycStatus: true },
     });
     if (!seller) throw new NotFoundException();
     if (seller.status !== 'ACTIVE') {
@@ -471,6 +471,22 @@ export class ListingsService {
     }
     if (!seller.isSeller) {
       throw new BadRequestException('Seller mode not activated');
+    }
+    // RES-HIGH-041: KYC gate — require at least submitted/in-review before first listing
+    if (!['VERIFIED', 'SUBMITTED', 'IN_REVIEW', 'PENDING'].includes(seller.kycStatus)) {
+      throw new BadRequestException(
+        'Identity verification required before listing. Complete KYC from your profile.',
+      );
+    }
+
+    // RES-MED-052: active listing cap — prevent single account from spamming unlimited listings
+    const activeCount = await this.prisma.productListing.count({
+      where: { sellerId, status: { in: ['ACTIVE', 'PENDING_REVIEW'] }, deletedAt: null },
+    });
+    if (activeCount >= 50) {
+      throw new BadRequestException(
+        'Active listing limit reached (50). Remove or pause existing listings to create new ones.',
+      );
     }
 
     const tabPrefix =
@@ -480,10 +496,9 @@ export class ListingsService {
           ? 'TOP'
           : 'ITM';
     const gamePrefix = game.slug.toUpperCase().replace(/-/g, '').slice(0, 3);
-    const count = await this.prisma.productListing.count({
-      where: { sku: { startsWith: `GTX-${gamePrefix}-${tabPrefix}-` } },
-    });
-    const sku = `GTX-${gamePrefix}-${tabPrefix}-${String(count + 1).padStart(4, '0')}`;
+    // RES-HIGH-005: count+1 SKU races under concurrent creates → P2002.
+    // Random hex suffix makes collisions astronomically unlikely.
+    const sku = `GTX-${gamePrefix}-${tabPrefix}-${randomBytes(4).toString('hex').toUpperCase()}`;
 
     const baseSlug = dto.title
       .toLowerCase()
@@ -595,13 +610,35 @@ export class ListingsService {
       throw new BadRequestException('Listing deleted');
     }
 
+    // RES-HIGH-025: block core-field edits when any order is in-flight —
+    // seller could rewrite listing post-sale to escape "not as described" disputes
+    const coreFieldsChanging =
+      dto.title !== undefined ||
+      dto.description !== undefined ||
+      dto.price !== undefined ||
+      dto.attributes !== undefined ||
+      dto.images !== undefined;
+    if (coreFieldsChanging) {
+      const inFlight = await this.prisma.order.count({
+        where: {
+          productListingId: listingId,
+          status: { in: ['PENDING', 'PAID', 'IN_PROGRESS', 'DELIVERED'] },
+        },
+      });
+      if (inFlight > 0) {
+        throw new BadRequestException(
+          'Cannot edit listing core fields while orders are in progress. Wait for active orders to complete.',
+        );
+      }
+    }
+
     const data: Prisma.ProductListingUpdateInput = {};
     if (dto.title !== undefined) data.title = dto.title;
     if (dto.description !== undefined) data.description = dto.description;
     if (dto.price !== undefined) data.price = dto.price;
     if (dto.originalPrice !== undefined) {
       data.originalPrice = dto.originalPrice;
-      const finalPrice = dto.price ?? listing.price;
+      const finalPrice = dto.price ?? listing.price.toNumber();
       if (dto.originalPrice && finalPrice) {
         data.discountPercent = Math.round(
           ((dto.originalPrice - finalPrice) / dto.originalPrice) * 100,
@@ -656,13 +693,27 @@ export class ListingsService {
     return { success: true };
   }
 
-  async getMyListings(sellerId: string): Promise<MyListingItem[]> {
-    return this.prisma.productListing.findMany({
+  // DB-032: cursor pagination — avoids O(offset) scans on large seller catalogues.
+  // Uses (createdAt DESC, id DESC) ordering backed by the compound index added in
+  // migration 20260529000004. Cursor is the last item's id; client passes it as
+  // ?cursor= on subsequent pages.
+  async getMyListings(
+    sellerId: string,
+    cursor?: string,
+    limit = 50,
+  ): Promise<{ data: MyListingItem[]; nextCursor: string | null }> {
+    const take = Math.min(limit, 50);
+    const items = await this.prisma.productListing.findMany({
       where: { sellerId, deletedAt: null },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: take + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       select: MY_LIST_SELECT,
     });
+    const hasMore = items.length > take;
+    const data = hasMore ? items.slice(0, take) : items;
+    const nextCursor = hasMore ? data[data.length - 1].id : null;
+    return { data, nextCursor };
   }
 
   async getMyListing(sellerId: string, id: string): Promise<MyListingDetail> {

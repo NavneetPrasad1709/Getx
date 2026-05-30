@@ -126,10 +126,12 @@ export default function AccountDetailPage() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
+      {/* WEB-MED-037: escape </script> sequences that could break out of the JSON-LD tag */}
       <script
         type="application/ld+json"
         // eslint-disable-next-line react/no-danger
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }}
+        // eslint-disable-next-line react/no-danger
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd).replace(/</g, '\u003c').replace(/>/g, '\u003e').replace(/&/g, '\u0026') }}
       />
 
       <main id="main" className="flex-1 container pt-24 pb-20">

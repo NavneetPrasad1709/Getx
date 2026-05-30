@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 
 /* ── KYC status ──────────────────────────────────────────────────── */
 export interface KycStatusResp {
-  status: 'NONE' | 'IN_REVIEW' | 'APPROVED' | 'REJECTED';
+  status: 'NONE' | 'IN_REVIEW' | 'VERIFIED' | 'REJECTED';
   level: string;
   submittedAt: string | null;
   verifiedAt: string | null;

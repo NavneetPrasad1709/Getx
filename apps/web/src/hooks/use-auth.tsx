@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { api } from '@/lib/api';
 
 // Same-origin via Next.js proxy — avoids Safari ITP blocking cross-site cookies.
@@ -36,7 +36,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // logged-out visitor on a public page never enters the interceptor's
   // refresh-and-retry path. This is the single bootstrap auth probe;
   // every other authenticated request still goes through `api`.
-  const refetch = async () => {
+  // WEB-LOW-028: useCallback so consumers don't re-fire effects on every render
+  const refetch = useCallback(async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
     try {
       /* /auth/session is the soft sibling of /auth/me — always returns
          200 with { user: AuthUser | null } so an anonymous landing
@@ -44,7 +47,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
          Practices used to ding us for it). Authenticated downstream
          requests still hit /auth/me / /auth/refresh which 401 on
          expiry as before. */
-      const res = await fetch(`${API_URL}/auth/session`, { credentials: 'include' });
+      // WEB-MED-044: AbortSignal so unmount during navigation doesn't setState on stale component
+      const res = await fetch(`${API_URL}/auth/session`, {
+        credentials: 'include',
+        signal: controller.signal,
+      });
       if (res.ok) {
         const data = (await res.json()) as { user: AuthUser | null };
         setUser(data.user);
@@ -54,9 +61,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       setUser(null);
     } finally {
+      clearTimeout(timeout);
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     void refetch();

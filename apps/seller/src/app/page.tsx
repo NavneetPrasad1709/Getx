@@ -608,7 +608,7 @@ function SetupChecklist({ user, stats }: { user: AuthUser | null; stats: SellerS
     {
       key: 'kyc',
       label: 'Start KYC for payouts',
-      done: user?.kycStatus === 'APPROVED' || user?.kycStatus === 'IN_REVIEW',
+      done: user?.kycStatus === 'VERIFIED' || user?.kycStatus === 'IN_REVIEW',
       href: '/profile',
     },
   ];

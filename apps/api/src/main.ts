@@ -5,7 +5,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { json } from 'express';
-import type { Request } from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
 import { ZodExceptionFilter } from './common/zod-exception.filter';
@@ -25,10 +25,13 @@ async function bootstrap() {
        api-*.up.railway.app vs *.vercel.app). Setting it to a Public
        Suffix List entry like ".vercel.app" makes browsers drop the
        cookie silently, so we prefer absent over wrong. */
+    /* AUTH-007: JWT_REFRESH_SECRET is intentionally NOT required. Refresh
+       tokens are opaque 48-byte random strings stored as SHA-256 hashes (see
+       AuthService.generateTokens) — there is no refresh JWT to sign, so the
+       secret was dead config. Only the access-token signing secret matters. */
     const required = [
       'DATABASE_URL',
       'JWT_ACCESS_SECRET',
-      'JWT_REFRESH_SECRET',
       'PII_ENCRYPTION_KEY',
       'WEB_URL',
       'SELLER_URL',
@@ -36,10 +39,21 @@ async function bootstrap() {
     ];
     const missing = required.filter((key) => !process.env[key]);
     if (missing.length > 0) {
-      // Plain console.error — Logger isn't initialized yet at this point.
-
       console.error(
         `❌ Missing required env vars in production: ${missing.join(', ')}`,
+      );
+      process.exit(1);
+    }
+
+    // Enforce secret strength — a short JWT secret is trivially brute-forced.
+    if ((process.env.JWT_ACCESS_SECRET?.length ?? 0) < 32) {
+      console.error('❌ JWT_ACCESS_SECRET must be at least 32 characters');
+      process.exit(1);
+    }
+    // PII key must be exactly 64 hex chars (32 bytes) — no scrypt fallback accepted.
+    if (!/^[0-9a-f]{64}$/.test(process.env.PII_ENCRYPTION_KEY ?? '')) {
+      console.error(
+        '❌ PII_ENCRYPTION_KEY must be a 64-char lowercase hex string. Generate: openssl rand -hex 32',
       );
       process.exit(1);
     }
@@ -57,19 +71,48 @@ async function bootstrap() {
   // Railway/Render/Vercel front the app with their own load balancer.
   app.set('trust proxy', 1);
 
-  app.use(helmet());
-  app.use(cookieParser());
-
-  // Capture raw body for ALL routes — webhook handler needs it for signature
-  // verification, others just don't read req.rawBody. Mounting json() with
-  // a verify hook globally replaces Nest's default body parser cleanly.
   app.use(
-    json({
-      verify: (req, _res, buf) => {
-        (req as RawBodyRequest).rawBody = Buffer.from(buf);
-      },
+    helmet({
+      // 2-year HSTS + preload so the browser never sends plain-HTTP to this origin.
+      hsts: { maxAge: 63072000, includeSubDomains: true, preload: true },
+      // Prevent reset-password ?token= from leaking via Referer to embedded assets.
+      referrerPolicy: { policy: 'no-referrer' },
     }),
   );
+  app.disable('x-powered-by');
+  app.use(cookieParser());
+
+  // Only capture rawBody for webhook routes (needed for signature verification).
+  // Cap webhook bodies at 1mb, everything else at 100kb to reduce DoS factor.
+  app.use((req: RawBodyRequest, _res: Response, next: NextFunction) => {
+    const isWebhook = req.url?.startsWith('/api/v1/webhooks/') ?? false;
+    json({
+      limit: isWebhook ? '1mb' : '100kb',
+      verify: isWebhook
+        ? (r: RawBodyRequest, __: Response, buf: Buffer) => {
+            r.rawBody = buf;
+          }
+        : undefined,
+    })(req as Request, _res, next);
+  });
+
+  // AUTH-CRIT-002: Force CORS preflight on all state-changing requests by
+  // requiring Content-Type: application/json. Plain form POSTs skip the
+  // preflight and can be weaponised for CSRF against sameSite=lax cookies.
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method)) {
+      const ct = (req.headers['content-type'] ?? '') as string;
+      if (!ct.startsWith('application/json')) {
+        res.status(415).json({
+          statusCode: 415,
+          error: 'Unsupported Media Type',
+          message: 'Content-Type must be application/json',
+        });
+        return;
+      }
+    }
+    next();
+  });
 
   /* CORS allowlist supports comma-separated values per env var so a
      single Vercel project served on multiple domains (preview + custom

@@ -1,22 +1,18 @@
 import { z } from 'zod';
 
-/* v1 supports UPI only. Card/Bank slots are reserved for future
-   tokenised payment flows. */
+// PAY-HIGH-021: only UPI accepted until CARD/BANK tokenisation ships.
+// Accepting CARD/BANK with no validation creates attacker-injectable rows
+// that future code trusting `type === 'CARD'` would fall back to.
 export const CreatePaymentMethodSchema = z
   .object({
-    type: z.enum(['UPI', 'CARD', 'BANK']).default('UPI'),
+    type: z.literal('UPI'),
     upiId: z
       .string()
       .min(3)
       .max(100)
-      .regex(/^[\w.-]+@[\w.-]+$/i, 'Invalid UPI ID')
-      .optional(),
+      .regex(/^[\w.-]+@[\w.-]+$/i, 'Invalid UPI ID'),
     label: z.string().max(40).optional().nullable(),
     isDefault: z.boolean().optional(),
-  })
-  .refine((d) => d.type !== 'UPI' || !!d.upiId, {
-    message: 'UPI ID required for type=UPI',
-    path: ['upiId'],
   });
 export type CreatePaymentMethodDto = z.infer<typeof CreatePaymentMethodSchema>;
 

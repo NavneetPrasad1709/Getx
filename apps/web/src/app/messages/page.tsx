@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { ChevronLeft } from 'lucide-react';
 import { Badge, Card, CardContent, Skeleton } from '@getx/ui';
 import { Header } from '@/components/header';
 import { LandingFooter } from '@/components/landing/landing-footer';
@@ -40,8 +41,16 @@ export default function MessagesPage() {
       <main className="container py-8 flex-1">
         <h1 className="font-display text-3xl font-bold mb-6">Messages</h1>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-[700px]">
-          <Card className="md:col-span-1 overflow-hidden flex flex-col">
+        {/* On mobile we show ONE panel at a time (list OR chat) so the
+            chat isn't hidden below the fold — tapping a conversation
+            swaps to the chat, and a Back button returns to the list.
+            On md+ both panels sit side by side as usual. */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-[calc(100dvh-11rem)] min-h-[480px] md:h-[700px]">
+          <Card
+            className={`md:col-span-1 overflow-hidden flex-col ${
+              selectedId ? 'hidden md:flex' : 'flex'
+            }`}
+          >
             <CardContent className="p-2 overflow-y-auto flex-1">
               {isLoading ? (
                 <div className="space-y-2 p-2">
@@ -91,10 +100,24 @@ export default function MessagesPage() {
             </CardContent>
           </Card>
 
-          <Card className="md:col-span-2 overflow-hidden">
+          <Card
+            className={`md:col-span-2 overflow-hidden ${
+              selectedId ? 'block' : 'hidden md:block'
+            }`}
+          >
             <CardContent className="p-0 h-full">
               {selectedId ? (
-                <ChatWindow conversationId={selectedId} className="h-full" />
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedId(null)}
+                    className="md:hidden flex w-full items-center gap-1.5 px-4 py-3 border-b border-border text-sm font-medium hover:bg-muted/30 transition-colors"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Back to conversations
+                  </button>
+                  <ChatWindow conversationId={selectedId} className="h-full" />
+                </>
               ) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
                   Select a conversation to start chatting.

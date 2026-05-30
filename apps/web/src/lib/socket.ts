@@ -5,10 +5,15 @@ let tokenPromise: Promise<string | undefined> | null = null;
 
 function getSocketUrl(): string {
   if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
-  const apiUrl =
-    process.env.NEXT_PUBLIC_API_DIRECT_URL ??
-    'http://localhost:4000';
-  return apiUrl.replace(/\/api\/v1\/?$/, '');
+  const apiUrl = process.env.NEXT_PUBLIC_API_DIRECT_URL;
+  // WEB-MED-018: throw in production so misconfigured deploys are immediately
+  // visible rather than silently connecting to localhost:4000
+  if (!apiUrl && process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'NEXT_PUBLIC_WS_URL or NEXT_PUBLIC_API_DIRECT_URL must be set in production',
+    );
+  }
+  return (apiUrl ?? 'http://localhost:4000').replace(/\/api\/v1\/?$/, '');
 }
 
 interface RateLimitPayload {

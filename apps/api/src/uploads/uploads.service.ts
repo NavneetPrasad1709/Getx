@@ -57,8 +57,12 @@ export class UploadsService {
   ): Promise<UploadResult> {
     this.validateImage(buffer, mimeType);
 
-    const ext = this.getExtension(originalName, mimeType);
-    const key = `requests/${userId}/${Date.now()}-${randomBytes(8).toString('hex')}.${ext}`;
+    // RES-CRIT-002: derive extension from validated MIME only — reading from
+    // originalName lets an attacker land a .php or .html key on the CDN.
+    // Sanitize userId to prevent path traversal if the ID format ever changes.
+    const ext = this.getExtension('', mimeType);
+    const safeUserId = userId.replace(/[^a-zA-Z0-9_-]/g, '');
+    const key = `requests/${safeUserId}/${Date.now()}-${randomBytes(8).toString('hex')}.${ext}`;
 
     if (!this.s3 || !this.hasR2) {
       const dataUrl = `data:${mimeType};base64,${buffer.toString('base64')}`;

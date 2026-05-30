@@ -3,7 +3,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 
-export type ListingStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'SOLD_OUT' | 'REMOVED';
+// SAP-CRIT-011: include PENDING_REVIEW + REJECTED so rejected listings
+// surface to sellers with a reason CTA instead of silently disappearing
+export type ListingStatus =
+  | 'DRAFT'
+  | 'PENDING_REVIEW'
+  | 'ACTIVE'
+  | 'PAUSED'
+  | 'SOLD_OUT'
+  | 'REMOVED'
+  | 'REJECTED';
 
 export interface SellerListing {
   id: string;
@@ -46,11 +55,15 @@ export interface CreateListingPayload {
 export type UpdateListingPayload = Partial<CreateListingPayload>;
 
 export function useMyListings() {
+  // DB-032: API now returns cursor-paginated shape { data, nextCursor }.
+  // First page (no cursor) covers the default 50-item limit for the dashboard.
   return useQuery<SellerListing[]>({
     queryKey: ['seller-listings'],
     queryFn: async () => {
-      const { data } = await api.get<SellerListing[]>('/listings/me/list');
-      return data;
+      const { data } = await api.get<{ data: SellerListing[]; nextCursor: string | null }>(
+        '/listings/me/list',
+      );
+      return data.data;
     },
     staleTime: 30 * 1000,
   });

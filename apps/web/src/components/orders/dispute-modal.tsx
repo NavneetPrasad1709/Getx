@@ -195,37 +195,42 @@ export function DisputeModal({
   };
 
   return (
+    // WEB-MED a11y: aria-labelledby + aria-describedby wire h2 + subtitle to dialog
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Open a dispute"
+      aria-labelledby="dispute-modal-title"
+      aria-describedby="dispute-modal-desc"
       onClick={onClose}
       className="fixed inset-0 z-[75] bg-black/65 backdrop-blur-sm grid place-items-center p-4"
     >
       <form
         onSubmit={submit}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-xl rounded-3xl bg-[hsl(var(--background))] border border-border/60 shadow-2xl p-6 max-h-[90vh] overflow-y-auto"
+        // WEB-MED inline-style: bg-[hsl(var(--background))] → bg-background
+        className="w-full max-w-xl rounded-3xl bg-background border border-border/60 shadow-2xl p-6 max-h-[90vh] overflow-y-auto"
       >
         <div className="flex items-start justify-between gap-4 mb-4">
           <div className="flex items-start gap-3">
-            <span className="h-10 w-10 rounded-full bg-[hsl(var(--error)/0.12)] text-[hsl(var(--error))] grid place-items-center shrink-0">
+            {/* WEB-MED inline-style: bg-[hsl(var(--error)/0.12)] text-[hsl(var(--error))] → design tokens */}
+            <span className="h-10 w-10 rounded-full bg-error/12 text-error grid place-items-center shrink-0">
               <ShieldAlert className="h-4 w-4" />
             </span>
             <div>
-              <h2 className="font-display text-xl font-extrabold">
+              <h2 id="dispute-modal-title" className="font-display text-xl font-extrabold">
                 Open a dispute
               </h2>
-              <p className="mt-0.5 text-[12px] text-muted-foreground">
+              <p id="dispute-modal-desc" className="mt-0.5 text-[12px] text-muted-foreground">
                 Order {orderNumber} · funds remain in escrow while we review
               </p>
             </div>
           </div>
+          {/* WEB-MED inline-style: hover:bg-[hsl(var(--surface-elevated))] → hover:bg-surface-elevated */}
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
-            className="h-8 w-8 rounded-full grid place-items-center text-muted-foreground hover:bg-[hsl(var(--surface-elevated))]"
+            aria-label="Close dispute dialog"
+            className="h-8 w-8 rounded-full grid place-items-center text-muted-foreground hover:bg-surface-elevated"
           >
             <X className="h-4 w-4" />
           </button>
@@ -239,20 +244,22 @@ export function DisputeModal({
           <ul className="space-y-2">
             {REASONS.map((r) => (
               <li key={r.value}>
+                {/* WEB-MED inline-style: border-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.06)] → design tokens */}
                 <label
                   className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors ${
                     reason === r.value
-                      ? 'border-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.06)]'
-                      : 'border-border/60 bg-surface/40 hover:border-[hsl(var(--primary)/0.4)]'
+                      ? 'border-primary bg-primary/6'
+                      : 'border-border/60 bg-surface/40 hover:border-primary/40'
                   }`}
                 >
+                  {/* WEB-MED inline-style: accent-[hsl(var(--primary))] → accent-primary */}
                   <input
                     type="radio"
                     name="reason"
                     value={r.value}
                     checked={reason === r.value}
                     onChange={() => setReason(r.value)}
-                    className="accent-[hsl(var(--primary))] mt-1"
+                    className="accent-primary mt-1"
                   />
                   <div className="min-w-0 flex-1">
                     <div className="text-[13px] font-semibold">{r.label}</div>
@@ -271,23 +278,19 @@ export function DisputeModal({
           <label className="block text-[12px] font-semibold mb-1.5">
             Describe what happened
           </label>
+          {/* WEB-MED inline-style: bg-[hsl(var(--surface))] → bg-surface; focus:border/ring tokens */}
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={4}
             maxLength={2000}
             placeholder="When did you notice the issue? What does the seller's last message say? Include timestamps if you have them."
-            className="w-full rounded-xl border border-border/60 bg-[hsl(var(--surface))] px-3 py-2.5 text-[13px] outline-none focus:border-[hsl(var(--primary))] focus:ring-2 focus:ring-[hsl(var(--primary)/0.18)]"
+            className="w-full rounded-xl border border-border/60 bg-surface px-3 py-2.5 text-[13px] outline-none focus:border-primary focus:ring-2 focus:ring-primary/18"
           />
           <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
             <span>Minimum 30 characters</span>
-            <span
-              className={
-                description.trim().length < 30
-                  ? 'text-[hsl(var(--error))]'
-                  : 'text-[hsl(var(--success))]'
-              }
-            >
+            {/* WEB-MED inline-style: text-[hsl(var(--error))] / text-[hsl(var(--success))] → tokens */}
+            <span className={description.trim().length < 30 ? 'text-error' : 'text-success'}>
               {description.trim().length} / 2000
             </span>
           </div>
@@ -308,11 +311,12 @@ export function DisputeModal({
               />
             ))}
             {pending.length < MAX_FILES ? (
+              // WEB-MED inline-style: arbitrary hsl values → design tokens
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="h-20 w-20 rounded-xl border border-dashed border-border bg-[hsl(var(--surface-elevated)/0.4)] grid place-items-center text-muted-foreground hover:text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary)/0.04)]"
-                aria-label="Attach evidence"
+                className="h-20 w-20 rounded-xl border border-dashed border-border bg-surface-elevated/40 grid place-items-center text-muted-foreground hover:text-primary hover:bg-primary/4"
+                aria-label="Attach evidence image"
               >
                 <Upload className="h-4 w-4" />
               </button>
@@ -332,26 +336,23 @@ export function DisputeModal({
         </div>
 
         {/* Trust copy */}
-        <div className="rounded-xl bg-[hsl(var(--surface-elevated))] p-3 text-[11.5px] text-muted-foreground mb-5">
+        {/* WEB-MED inline-style: bg-[hsl(var(--surface-elevated))] → bg-surface-elevated */}
+        <div className="rounded-xl bg-surface-elevated p-3 text-[11.5px] text-muted-foreground mb-5">
           Our team reviews disputes within 6 hours. Funds remain in escrow
           while open. Both you and the seller can add evidence at any time.
         </div>
 
         <div className="flex items-center justify-end gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={onClose}
-            className="rounded-full"
-          >
+          <Button type="button" variant="ghost" onClick={onClose} className="rounded-full">
             Cancel
           </Button>
+          {/* WEB-MED inline-style: bg-[hsl(var(--error))] → bg-error */}
           <Button
             type="submit"
             loading={submitting}
             loadingText="Submitting…"
             disabled={!canSubmit}
-            className="rounded-full bg-[hsl(var(--error))] hover:bg-[hsl(var(--error)/0.85)]"
+            className="rounded-full bg-error hover:bg-error/85"
           >
             Open dispute
           </Button>
@@ -371,7 +372,8 @@ function EvidenceTile({
   onRetry: () => void;
 }) {
   return (
-    <div className="relative h-20 w-20 rounded-xl overflow-hidden border border-border/60 bg-[hsl(var(--surface-elevated))]">
+    // WEB-MED inline-style: bg-[hsl(var(--surface-elevated))] → bg-surface-elevated
+    <div className="relative h-20 w-20 rounded-xl overflow-hidden border border-border/60 bg-surface-elevated">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={file.previewUrl}
@@ -384,11 +386,12 @@ function EvidenceTile({
         </div>
       ) : null}
       {file.status === 'error' ? (
+        // WEB-MED inline-style: bg-[hsl(var(--error)/0.85)] → bg-error/85
         <button
           type="button"
           onClick={onRetry}
           aria-label="Retry upload"
-          className="absolute inset-0 bg-[hsl(var(--error)/0.85)] grid place-items-center text-white"
+          className="absolute inset-0 bg-error/85 grid place-items-center text-white"
         >
           <RefreshCcw className="h-3.5 w-3.5" />
         </button>
@@ -396,7 +399,7 @@ function EvidenceTile({
       <button
         type="button"
         onClick={onRemove}
-        aria-label="Remove"
+        aria-label="Remove attachment"
         className="absolute top-0.5 right-0.5 h-5 w-5 rounded-full bg-black/65 text-white grid place-items-center hover:bg-black/85"
       >
         <Trash2 className="h-2.5 w-2.5" />

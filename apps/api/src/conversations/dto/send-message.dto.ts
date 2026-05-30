@@ -13,6 +13,11 @@ export const SendMessageSchema = z
   .refine((d) => d.content.trim().length > 0 || d.attachments.length > 0, {
     message: 'Message must include text or at least one attachment',
     path: ['content'],
+  })
+  // RES-MED-044: IMAGE type must have at least one attachment
+  .refine((d) => d.type !== 'IMAGE' || d.attachments.length > 0, {
+    message: 'IMAGE type requires at least one attachment',
+    path: ['attachments'],
   });
 
 export const StartConversationSchema = z

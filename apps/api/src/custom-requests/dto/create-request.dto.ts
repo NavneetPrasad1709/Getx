@@ -35,7 +35,9 @@ export const CreateRequestSchema = z.object({
   attributes: z.record(z.string(), z.unknown()).default({}),
   addons: z.record(z.string(), z.boolean()).optional(),
 
-  platform: z.string().optional(),
+  // Must match the Prisma `Platform` enum — a bare string both failed to
+  // typecheck against the column and let arbitrary values through validation.
+  platform: z.enum(['IOS', 'ANDROID', 'PC', 'WEB']).optional(),
 });
 
 export type CreateRequestDto = z.infer<typeof CreateRequestSchema>;

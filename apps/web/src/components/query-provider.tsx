@@ -11,6 +11,10 @@ export function QueryProvider({ children }: { children: ReactNode }) {
           queries: {
             staleTime: 60 * 1000,
             retry: 1,
+            // WEB-MED-017: opt-out global refetch on tab focus — every tab return
+            // was triggering refetches across the whole query tree; hooks that need
+            // it (wallet, loyalty) opt in individually
+            refetchOnWindowFocus: false,
           },
         },
       }),

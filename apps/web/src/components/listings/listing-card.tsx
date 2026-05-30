@@ -51,7 +51,7 @@ function SmartImage({
           setIndex(index + 1);
         }
       }}
-      unoptimized
+      // WEB-MED-008: removed unoptimized — enables AVIF/WebP pipeline + responsive srcset
     />
   );
 }

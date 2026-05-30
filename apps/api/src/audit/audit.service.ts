@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AuditSeverity, Prisma } from '@getx/database';
+import { AuditSeverity, AuditSource, Prisma } from '@getx/database';
 import { PrismaService } from '../prisma/prisma.service';
 
 interface AuditLogInput {
@@ -12,7 +12,7 @@ interface AuditLogInput {
   ipAddress?: string;
   userAgent?: string;
   sessionId?: string;
-  source?: string;
+  source?: AuditSource;
   severity?: AuditSeverity;
 }
 
@@ -36,13 +36,16 @@ export class AuditService {
           ipAddress: input.ipAddress,
           userAgent: input.userAgent,
           sessionId: input.sessionId,
-          source: input.source || 'api',
+          source: input.source ?? AuditSource.API,
           severity: input.severity || 'INFO',
         },
       });
     } catch (error) {
-      // Never fail the parent operation when audit write fails.
       this.logger.error('Audit log failed', error as Error);
+      // PAY-MED-032: CRITICAL money-trail audits must not be silently lost —
+      // rethrow so the caller's transaction rolls back rather than committing
+      // a money movement with no audit record.
+      if (input.severity === 'CRITICAL') throw error;
     }
   }
 }

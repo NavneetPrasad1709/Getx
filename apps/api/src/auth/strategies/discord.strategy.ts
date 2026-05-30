@@ -55,10 +55,16 @@ export class DiscordStrategy extends PassportStrategy(Strategy, 'discord') {
       ? `https://cdn.discordapp.com/avatars/${profile.id}/${profile.avatar}${profile.avatar.startsWith('a_') ? '.gif' : '.png'}?size=256`
       : null;
 
+    // Discord's `verified` flag is whether the account's email is confirmed.
+    // Fail closed if the field is absent.
+    const emailVerified =
+      (profile as { verified?: boolean }).verified === true;
+
     const normalized: OAuthProfileNormalized = {
       provider: 'discord',
       providerId: profile.id,
       email: profile.email.toLowerCase(),
+      emailVerified,
       name:
         profile.global_name ||
         profile.username ||

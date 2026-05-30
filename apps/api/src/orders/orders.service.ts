@@ -5,21 +5,21 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { randomBytes } from 'node:crypto';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { Prisma } from '@getx/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ConversationsService } from '../conversations/conversations.service';
 import { ChatGateway } from '../conversations/chat.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
-import { WalletService } from '../wallet/wallet.service';
-import { LoyaltyService } from '../loyalty/loyalty.service';
 import { RankService } from '../rank/rank.service';
 import {
   CreateOrderFromListingDto,
   CreateOrderFromOfferDto,
   MarkDeliveredDto,
 } from './dto/create-order.dto';
+import { ORDER_EVENTS, OrderReleasedEvent } from './order.events';
 
 const BUYER_FEE_PCT = 0.08;
 /* Default seller commission. Per-rank tiers (TRUSTED 9%, PRO 8%,
@@ -111,15 +111,16 @@ function round2(n: number): number {
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name);
 
+  // Reduced from 8 deps to 5 — wallet/loyalty/rank side-effects moved to
+  // event listeners (OrderWalletListener, OrderLoyaltyListener, OrderRankListener)
+  // that subscribe to ORDER_EVENTS.RELEASED and run asynchronously.
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
     private conversations: ConversationsService,
     private chat: ChatGateway,
     private notifications: NotificationsService,
-    private wallet: WalletService,
-    private loyalty: LoyaltyService,
-    private rank: RankService,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   private async emitSystemMessage(params: {
@@ -163,36 +164,32 @@ export class OrdersService {
       throw new BadRequestException('Insufficient stock');
     }
 
-    /* Atomic stock reservation — `updateMany` with the stock predicate
-       inside the WHERE clause prevents the TOCTOU race where two
-       concurrent buyers both pass the `listing.stock < dto.quantity`
-       check above. updateMany returns count=0 if the row no longer
-       satisfies the predicate (sold out by a concurrent buyer); we
-       roll the order back by throwing before creation. -1 stock means
-       unlimited and skips reservation entirely. */
-    if (listing.stock !== -1) {
-      const reserve = await this.prisma.productListing.updateMany({
-        where: {
-          id: listing.id,
-          status: 'ACTIVE',
-          deletedAt: null,
-          stock: { gte: dto.quantity },
-        },
-        data: { stock: { decrement: dto.quantity } },
-      });
-      if (reserve.count === 0) {
-        throw new BadRequestException('Insufficient stock');
+    // PAY-MED-031: stock reservation and order create inside a single
+    // $transaction — the old separate-step + catch-block pattern could
+    // double-credit inventory on retry after a partial failure.
+    return this.prisma.$transaction(async (tx) => {
+      if (listing.stock !== -1) {
+        const reserve = await tx.productListing.updateMany({
+          where: {
+            id: listing.id,
+            status: 'ACTIVE',
+            deletedAt: null,
+            stock: { gte: dto.quantity },
+          },
+          data: { stock: { decrement: dto.quantity } },
+        });
+        if (reserve.count === 0) {
+          throw new BadRequestException('Insufficient stock');
+        }
       }
-    }
 
-    try {
-      return await this.createOrder({
+      return this.createOrderInTx(tx, {
         buyerId,
         sellerId: listing.sellerId,
         listingId: listing.id,
         customRequestId: null,
         offerId: null,
-        basePrice: listing.price,
+        basePrice: listing.price.toNumber(),
         quantity: dto.quantity,
         currency: listing.currency,
         snapshotTitle: listing.title,
@@ -200,28 +197,12 @@ export class OrdersService {
           kind: 'listing',
           title: listing.title,
           sku: listing.sku,
-          price: listing.price,
+          price: listing.price.toNumber(),
           attributes: listing.attributes as Prisma.InputJsonValue,
           images: listing.images,
         },
       });
-    } catch (err) {
-      /* Restore the reserved stock if the order row itself failed to
-         insert — otherwise we'd leak inventory. */
-      if (listing.stock !== -1) {
-        await this.prisma.productListing
-          .update({
-            where: { id: listing.id },
-            data: { stock: { increment: dto.quantity } },
-          })
-          .catch(() => {
-            this.logger.error(
-              `Stock release failed for listing ${listing.id} after createOrder error — manual reconciliation needed.`,
-            );
-          });
-      }
-      throw err;
-    }
+    });
   }
 
   async createFromOffer(
@@ -244,29 +225,36 @@ export class OrdersService {
       throw new BadRequestException('Request no longer accepting offers');
     }
 
-    return this.createOrder({
-      buyerId,
-      sellerId: offer.sellerId,
-      listingId: null,
-      customRequestId: offer.requestId,
-      offerId: offer.id,
-      basePrice: offer.price,
-      quantity: 1,
-      currency: offer.currency,
-      snapshotTitle: offer.request.title,
-      snapshot: {
-        kind: 'offer',
-        requestNumber: offer.request.requestNumber,
-        title: offer.request.title,
-        offerPrice: offer.price,
-        deliveryHours: offer.deliveryHours,
-        message: offer.message,
-        attributes: offer.request.attributes as Prisma.InputJsonValue,
-      },
-    });
+    return this.prisma.$transaction((tx) =>
+      this.createOrderInTx(tx, {
+        buyerId,
+        sellerId: offer.sellerId,
+        listingId: null,
+        customRequestId: offer.requestId,
+        offerId: offer.id,
+        basePrice: offer.price.toNumber(),
+        quantity: 1,
+        currency: offer.currency,
+        snapshotTitle: offer.request.title,
+        snapshot: {
+          kind: 'offer',
+          requestNumber: offer.request.requestNumber,
+          title: offer.request.title,
+          offerPrice: offer.price,
+          deliveryHours: offer.deliveryHours,
+          message: offer.message,
+          attributes: offer.request.attributes as Prisma.InputJsonValue,
+        },
+      }),
+    );
   }
 
-  private async createOrder(params: CreateOrderParams): Promise<OrderRow> {
+  // PAY-MED-031: accepts an optional transaction client so stock reservation
+  // and order insert can share the same atomic transaction in createFromListing
+  private async createOrderInTx(
+    tx: Prisma.TransactionClient,
+    params: CreateOrderParams,
+  ): Promise<OrderRow> {
     const amount = round2(params.basePrice * params.quantity);
     const buyerFee = round2(amount * BUYER_FEE_PCT);
     const buyerTotal = round2(amount + buyerFee);
@@ -274,7 +262,7 @@ export class OrdersService {
     /* Resolve the seller's commission rate from their current rank.
        Fallback to the default 10% if the seller row is missing for some
        reason — never zero, never throws. */
-    const sellerRankRow = await this.prisma.user.findUnique({
+    const sellerRankRow = await tx.user.findUnique({
       where: { id: params.sellerId },
       select: { rank: true },
     });
@@ -284,13 +272,13 @@ export class OrdersService {
     const sellerCommission = round2(amount * commissionRate);
     const sellerAmount = round2(amount - sellerCommission);
 
+    // PAY-HIGH-016: count+1 races under concurrent creates → P2002 + inventory leak.
+    // Use year-scoped random suffix — 5 hex bytes = 40 bits, collision probability
+    // at 1M orders/year is ~0.00009%.
     const year = new Date().getFullYear();
-    const count = await this.prisma.order.count({
-      where: { orderNumber: { startsWith: `ORD-${year}-` } },
-    });
-    const orderNumber = `ORD-${year}-${String(count + 1).padStart(6, '0')}`;
+    const orderNumber = `ORD-${year}-${randomBytes(5).toString('hex').toUpperCase()}`;
 
-    const order = await this.prisma.order.create({
+    const order = await tx.order.create({
       data: {
         orderNumber,
         buyerId: params.buyerId,
@@ -304,14 +292,14 @@ export class OrdersService {
         sellerCommission,
         sellerAmount,
         currency: params.currency,
+        // PAY-HIGH-024: quantity as first-class column — reliable for
+        // stock restoration even after paymentMetadata is overwritten
+        quantity: params.quantity,
         status: 'PENDING',
         escrowStatus: 'PENDING',
         paymentMetadata: {
           snapshotTitle: params.snapshotTitle,
           snapshot: params.snapshot,
-          /* Reserved quantity — used by processPaymentFailed to
-             restore inventory when the buyer abandons checkout. */
-          quantity: params.quantity,
         },
       },
     });
@@ -400,6 +388,19 @@ export class OrdersService {
       throw new BadRequestException('Order not in DELIVERED state');
     }
 
+    // PAY-HIGH-018: block confirm when buyer has an active dispute open
+    const activeDispute = await this.prisma.dispute.findFirst({
+      where: {
+        orderId,
+        status: { in: ['OPEN', 'REVIEWING', 'AWAITING_RESPONSE', 'ESCALATED'] },
+      },
+    });
+    if (activeDispute) {
+      throw new BadRequestException(
+        'Cannot confirm receipt — an active dispute is open on this order',
+      );
+    }
+
     await this.releaseToSeller(order.id, 'manual');
 
     await this.audit.log({
@@ -438,17 +439,25 @@ export class OrdersService {
   }
 
   /**
-   * Releases escrow to seller's wallet.
-   * Used by both manual confirm and the auto-release cron.
+   * Releases escrow to seller's wallet atomically, then emits an
+   * ORDER_EVENTS.RELEASED domain event.
+   *
+   * Side effects (cashback, loyalty XP, rank XP) subscribe to that event and
+   * run asynchronously so a transient failure in rewards never rolls back the
+   * seller's payment. Used by both manual confirm and the auto-release cron.
    */
-  private async releaseToSeller(
-    orderId: string,
-    trigger: 'manual' | 'auto',
-  ): Promise<void> {
-    const cashbackResult = await this.prisma.$transaction(async (tx) => {
+  async releaseToSeller(orderId: string, trigger: 'manual' | 'auto'): Promise<void> {
+    const releasedOrder = await this.prisma.$transaction(async (tx) => {
+      // PAY-CRIT-005: atomic claim — updateMany with escrowStatus predicate
+      // prevents two concurrent releases from both crediting the seller.
+      const claim = await tx.order.updateMany({
+        where: { id: orderId, escrowStatus: 'HELD' },
+        data: { status: 'COMPLETED', escrowStatus: 'RELEASED', confirmedAt: new Date() },
+      });
+      if (claim.count === 0) return null; // already released — idempotent skip
+
       const order = await tx.order.findUnique({ where: { id: orderId } });
       if (!order) throw new NotFoundException();
-      if (order.escrowStatus !== 'HELD') return { cashback: 0, order: null };
 
       const seller = await tx.user.findUnique({
         where: { id: order.sellerId },
@@ -456,16 +465,6 @@ export class OrdersService {
       });
       if (!seller) throw new NotFoundException('Seller not found');
 
-      await tx.order.update({
-        where: { id: orderId },
-        data: {
-          status: 'COMPLETED',
-          escrowStatus: 'RELEASED',
-          confirmedAt: new Date(),
-        },
-      });
-
-      const newWallet = seller.sellerWallet + order.sellerAmount;
       await tx.user.update({
         where: { id: order.sellerId },
         data: {
@@ -475,6 +474,14 @@ export class OrdersService {
         },
       });
 
+      // PAY-HIGH-019: re-read AFTER increment for accurate ledger balances
+      const postRelease = await tx.user.findUnique({
+        where: { id: order.sellerId },
+        select: { sellerWallet: true },
+      });
+      const releaseAfter = postRelease?.sellerWallet.toNumber()
+        ?? (seller.sellerWallet.toNumber() + order.sellerAmount.toNumber());
+
       await tx.walletTransaction.create({
         data: {
           userId: order.sellerId,
@@ -482,65 +489,32 @@ export class OrdersService {
           amount: order.sellerAmount,
           currency: order.currency,
           orderId: order.id,
-          balanceBefore: seller.sellerWallet,
-          balanceAfter: newWallet,
-          description: `Earnings from order ${order.orderNumber}${
-            trigger === 'auto' ? ' (auto-released)' : ''
-          }`,
+          balanceBefore: releaseAfter - order.sellerAmount.toNumber(),
+          balanceAfter: releaseAfter,
+          description: `Earnings from order ${order.orderNumber}${trigger === 'auto' ? ' (auto-released)' : ''}`,
           metadata: { trigger },
         },
       });
 
-      /* Buyer cashback — 1% of buyerTotal in same currency as the order.
-         Runs in the same tx as the seller release so balances stay in
-         sync even under failure. */
-      const cashback = await this.wallet.creditCashback(tx, {
-        buyerId: order.buyerId,
-        orderId: order.id,
-        orderNumber: order.orderNumber,
-        buyerTotal: order.buyerTotal,
-        currency: order.currency,
-      });
-
-      /* Loyalty: 1 point per $1 of buyerTotal (capped 1000/order to
-         prevent farming via inflated test orders). XP: 10× points,
-         capped 1000 per side. Both buyer and seller earn XP. */
-      const loyaltyPoints = Math.min(1000, Math.floor(order.buyerTotal));
-      if (loyaltyPoints > 0) {
-        await this.loyalty.earn(tx, {
-          userId: order.buyerId,
-          type: 'EARNED_PURCHASE',
-          points: loyaltyPoints,
-          description: `${loyaltyPoints} pts from order ${order.orderNumber}`,
-          orderId: order.id,
-        });
-      }
-      const xpAmount = Math.min(1000, Math.floor(order.buyerTotal) * 10);
-      if (xpAmount > 0) {
-        await this.rank.earnXp(tx, order.buyerId, xpAmount);
-        await this.rank.earnXp(tx, order.sellerId, xpAmount);
-      }
-
-      return { cashback, order, loyaltyPoints };
+      return order;
     });
 
-    /* Cashback toast — fire-and-forget outside the tx so the txn commits
-       even when the notification queue is unavailable. */
-    if (cashbackResult.cashback > 0 && cashbackResult.order) {
-      const o = cashbackResult.order;
-      void this.notifications.create({
-        userId: o.buyerId,
-        type: 'ORDER_COMPLETED',
-        title: 'GETX Coins earned',
-        message: `You earned ₹${cashbackResult.cashback.toFixed(0)} cashback on order ${o.orderNumber}.`,
-        link: '/profile/wallet',
-        metadata: {
-          orderId: o.id,
-          cashbackAmount: cashbackResult.cashback,
-        },
-        sendEmail: false,
-      });
-    }
+    if (!releasedOrder) return; // was already released — nothing to do
+
+    // Emit async event — listeners handle cashback, loyalty XP, rank XP
+    // independently and non-blocking relative to the seller's payment.
+    this.eventEmitter.emit(
+      ORDER_EVENTS.RELEASED,
+      new OrderReleasedEvent(
+        releasedOrder.id,
+        releasedOrder.orderNumber,
+        releasedOrder.buyerId,
+        releasedOrder.sellerId,
+        releasedOrder.buyerTotal.toNumber(),
+        releasedOrder.currency,
+        trigger,
+      ),
+    );
   }
 
   /* Reorder — creates a new PENDING order against the same listingId as a
@@ -648,9 +622,11 @@ export class OrdersService {
           responseDeadline: new Date(Date.now() + 6 * 60 * 60 * 1000),
         },
       });
+      // PAY-MED-035: populate disputeId + null out autoReleaseAt so the
+      // escrow cron never auto-releases while a dispute is open
       await tx.order.update({
         where: { id: orderId },
-        data: { status: 'DISPUTED' },
+        data: { status: 'DISPUTED', disputeId: d.id, autoReleaseAt: null },
       });
       return d;
     });
@@ -712,34 +688,23 @@ export class OrdersService {
   }
 
   /**
-   * Hourly auto-release sweeper. Without this cron, every PAID order
-   * sits in HELD escrow until the buyer manually confirms — sellers
-   * never get paid for orders where the buyer disappears or forgets.
-   * The 3-day escrow timer (set on order create as autoReleaseAt) is
-   * the contract; this is what enforces it.
-   *
-   * Idempotent: releaseToSeller no-ops when escrowStatus is already
-   * RELEASED, so a re-run on the same order is safe.
+   * Sweeps orders past their autoReleaseAt deadline and releases escrow.
+   * Called by OrderEscrowCron (extracted so scheduling is not the domain
+   * service's concern). Bounded to 500 per call; remainder rolls to next tick.
+   * Idempotent: releaseToSeller no-ops when escrowStatus is already RELEASED.
    */
-  @Cron(CronExpression.EVERY_HOUR, { name: 'escrowAutoRelease' })
-  async releaseExpiredEscrow() {
-    // An order with an open dispute must never auto-release, even when the
-    // escrow timer has elapsed and order.status is still DELIVERED/PAID —
-    // disputes don't mutate order.status, only the Dispute row.
+  async sweepExpiredEscrow(): Promise<{ released: number }> {
+    // Orders with an open dispute must never auto-release even if the timer
+    // has elapsed — disputes don't mutate order.status, only the Dispute row.
     const expired = await this.prisma.order.findMany({
       where: {
         escrowStatus: 'HELD',
         autoReleaseAt: { lt: new Date() },
         status: { in: ['DELIVERED', 'PAID', 'IN_PROGRESS'] },
         disputes: {
-          none: {
-            status: {
-              in: ['OPEN', 'REVIEWING', 'AWAITING_RESPONSE', 'ESCALATED'],
-            },
-          },
+          none: { status: { in: ['OPEN', 'REVIEWING', 'AWAITING_RESPONSE', 'ESCALATED'] } },
         },
       },
-      // Bounded batch — anything past this rolls into the next cron tick.
       take: 500,
       select: { id: true, orderNumber: true },
     });
@@ -749,10 +714,7 @@ export class OrdersService {
         await this.releaseToSeller(e.id, 'auto');
         this.logger.log(`Auto-released order ${e.orderNumber}`);
       } catch (err) {
-        this.logger.error(
-          `Auto-release failed for ${e.orderNumber}`,
-          err as Error,
-        );
+        this.logger.error(`Auto-release failed for ${e.orderNumber}`, err as Error);
       }
     }
 

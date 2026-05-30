@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { Card, CardContent } from '@getx/ui';
 import type { ReviewItem } from '@/hooks/use-reviews';
 
@@ -56,15 +57,21 @@ export function ReviewCard({ review }: Props) {
 
         {review.images.length > 0 && (
           <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mt-3">
-            {review.images.map((url, i) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={i}
-                src={url}
-                alt={`Review attachment ${i + 1}`}
-                className="rounded-md aspect-square object-cover border"
-              />
-            ))}
+            {review.images
+              .filter((url) => /^https?:\/\//i.test(url))
+              .map((url, i) => (
+                // WEB-CRIT-005: next/image + referrerPolicy prevents IP/Referer tracking
+                <div key={i} className="relative aspect-square">
+                  <Image
+                    src={url}
+                    alt={`Review attachment ${i + 1}`}
+                    fill
+                    className="rounded-md object-cover border"
+                    referrerPolicy="no-referrer"
+                    unoptimized
+                  />
+                </div>
+              ))}
           </div>
         )}
 

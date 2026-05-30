@@ -177,7 +177,7 @@ export default function WalletPage() {
     !!payouts.data?.payoutsEnabled && sellerWallet > 0;
 
   const kycStatus = user?.kycStatus ?? 'NONE';
-  const kycOk = kycStatus === 'APPROVED';
+  const kycOk = kycStatus === 'VERIFIED';
   const payoutOk = !!payouts.data?.payoutsEnabled;
   const allSetupDone = kycOk && payoutOk;
 
@@ -197,7 +197,15 @@ export default function WalletPage() {
     }
   };
 
+  // SAP-HIGH-019: explicit feature flag so the button is correctly disabled
+  // in staging/test envs and the label communicates the real state
+  const payoutsLive = process.env.NEXT_PUBLIC_PAYOUTS_LIVE === 'true';
+
   const handleWithdrawClick = () => {
+    if (!payoutsLive) {
+      toast.info('Withdrawals are coming soon. Your earnings are safe.');
+      return;
+    }
     if (!allSetupDone) {
       toast.error('Finish payout setup first');
       return;
@@ -206,15 +214,7 @@ export default function WalletPage() {
       toast.error('No funds to withdraw');
       return;
     }
-    /* Stripe is intentionally deferred for the soft-launch, so a real
-       withdraw is not yet possible. Surface that explicitly instead of
-       re-opening the Connect onboarding link (which the old code did
-       and made it look like a withdraw button that silently re-routed
-       through onboarding). When STRIPE_SECRET_KEY lands on the API,
-       swap this for a Stripe Connect Express dashboard login link. */
-    toast.info(
-      'Withdrawals open the day checkout goes live. Payout setup is saved.',
-    );
+    toast.info('Withdrawals open the day checkout goes live. Payout setup is saved.');
   };
 
   return (

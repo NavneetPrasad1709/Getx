@@ -1,6 +1,10 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { getRedisClient } from './common/redis.factory';
+import { RedisThrottlerStorage } from './common/redis-throttler.storage';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -38,7 +42,27 @@ import { WaitlistModule } from './waitlist/waitlist.module';
       isGlobal: true,
       cache: true,
     }),
+    // Global event bus — listeners in OrdersModule subscribe to order.released
+    // to run cashback/loyalty/XP side-effects outside the payment transaction.
+    EventEmitterModule.forRoot({ wildcard: false, maxListeners: 20 }),
     ScheduleModule.forRoot(),
+    // RES-HIGH-009: global rate-limiter — 60 req/60s per IP (tightened from
+    // 100). Per-route overrides via @Throttle() in controllers.
+    // ARCH-004: when REDIS_URL is set the counter lives in Redis so the limit
+    // is enforced across every replica; without it, the in-memory store is the
+    // single-replica/dev fallback. forRootAsync (not forRoot) so the factory
+    // runs AFTER ConfigModule has loaded .env into process.env.
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const redisUrl = config.get<string>('REDIS_URL');
+        const redis = redisUrl ? getRedisClient() : null;
+        return {
+          throttlers: [{ ttl: 60_000, limit: 60 }],
+          ...(redis ? { storage: new RedisThrottlerStorage(redis) } : {}),
+        };
+      },
+    }),
     PrismaModule,
     AuditModule,
     MailModule,

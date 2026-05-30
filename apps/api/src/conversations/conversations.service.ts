@@ -106,14 +106,24 @@ export class ConversationsService {
     });
     if (existing) return existing;
 
-    const conversation = await this.prisma.conversation.create({
-      data: {
-        orderId,
-        buyerId: order.buyerId,
-        sellerId: order.sellerId,
-      },
-      include: DETAIL_INCLUDE,
-    });
+    let conversation;
+    try {
+      conversation = await this.prisma.conversation.create({
+        data: {
+          orderId,
+          buyerId: order.buyerId,
+          sellerId: order.sellerId,
+        },
+        include: DETAIL_INCLUDE,
+      });
+    } catch (err) {
+      // RES-HIGH-027: P2002 = concurrent create won the race → re-fetch
+      if (err && typeof err === 'object' && 'code' in err && (err as {code?:string}).code === 'P2002') {
+        const refetched = await this.prisma.conversation.findUnique({ where: { orderId }, include: DETAIL_INCLUDE });
+        if (refetched) return refetched;
+      }
+      throw err;
+    }
 
     await this.prisma.message.create({
       data: {
@@ -152,14 +162,30 @@ export class ConversationsService {
     });
     if (existing) return existing;
 
-    const conversation = await this.prisma.conversation.create({
-      data: {
-        offerId,
-        buyerId: offer.buyerId,
-        sellerId: offer.sellerId,
-      },
-      include: DETAIL_INCLUDE,
-    });
+    let conversation;
+    try {
+      conversation = await this.prisma.conversation.create({
+        data: {
+          offerId,
+          buyerId: offer.buyerId,
+          sellerId: offer.sellerId,
+        },
+        include: DETAIL_INCLUDE,
+      });
+    } catch (err) {
+      // RES-HIGH-027: P2002 = concurrent create → re-fetch
+      if (
+        err && typeof err === 'object' && 'code' in err &&
+        (err as { code?: string }).code === 'P2002'
+      ) {
+        const refetched = await this.prisma.conversation.findUnique({
+          where: { offerId },
+          include: DETAIL_INCLUDE,
+        });
+        if (refetched) return refetched;
+      }
+      throw err;
+    }
 
     await this.prisma.message.create({
       data: {
@@ -403,6 +429,21 @@ export class ConversationsService {
       throw new BadRequestException("Can't message yourself");
     }
 
+    // RES-HIGH-043: check for SPAM block across the full buyer-seller pair,
+    // not just this listing — otherwise a different listing bypasses the block
+    const spamBlock = await this.prisma.conversation.findFirst({
+      where: {
+        type: 'PRE_PURCHASE',
+        buyerId,
+        sellerId: listing.sellerId,
+        status: { in: ['SPAM', 'BLOCKED'] },
+      },
+      select: { id: true },
+    });
+    if (spamBlock) {
+      throw new ForbiddenException('Seller has blocked further pre-purchase messages');
+    }
+
     /* Reuse existing pre-purchase conversation between this buyer and
        seller for this listing. */
     const existing = await this.prisma.conversation.findFirst({
@@ -411,17 +452,11 @@ export class ConversationsService {
         buyerId,
         sellerId: listing.sellerId,
         listingId,
+        status: { notIn: ['SPAM', 'BLOCKED'] },
       },
       include: DETAIL_INCLUDE,
     });
-    if (existing) {
-      if (existing.status === 'SPAM' || existing.status === 'BLOCKED') {
-        throw new ForbiddenException(
-          'Seller has blocked further pre-purchase messages',
-        );
-      }
-      return existing;
-    }
+    if (existing) return existing;
 
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 

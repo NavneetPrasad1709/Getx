@@ -1,21 +1,28 @@
 import { z } from 'zod';
+import { ProductType } from '@getx/database';
+import { safeImageUrl, safeHttpUrl } from '../../common/validators/safe-url';
+
+// RES-HIGH-049: whitelist supported currencies — free-text allows emoji/garbage
+const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP', 'AUD', 'CAD', 'SGD', 'INR'] as const;
 
 export const CreateListingSchema = z.object({
   gameSlug: z.string().min(1),
   tabType: z.enum(['ACCOUNTS', 'TOP_UPS', 'ITEMS']),
-  productType: z.string().min(1),
+  // DB-025: enum replaces freetext productType
+  productType: z.nativeEnum(ProductType),
 
   title: z.string().min(5, 'Title too short').max(150),
   description: z.string().min(20, 'Description too short').max(5000),
 
   price: z.number().min(1, 'Price must be at least $1').max(100000),
-  currency: z.string().default('USD'),
+  currency: z.enum(SUPPORTED_CURRENCIES).default('USD'),
   originalPrice: z.number().min(1).optional(),
 
   stock: z.number().int().min(-1).default(1),
 
-  images: z.array(z.string()).max(10).default([]),
-  videoUrl: z.string().url().optional(),
+  // RES-HIGH-001: use safeImageUrl — plain z.string() accepted javascript: and data:text/html
+  images: z.array(safeImageUrl()).max(10).default([]),
+  videoUrl: safeHttpUrl().optional(),
 
   attributes: z.record(z.string(), z.unknown()).default({}),
 

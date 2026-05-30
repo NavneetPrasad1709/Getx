@@ -229,7 +229,8 @@ export function Header() {
   const pathname = usePathname() || '/';
   const router = useRouter();
   const { user, isAuthenticated, loading, logout } = useAuth();
-  const sellerUrl = process.env.NEXT_PUBLIC_SELLER_URL || 'http://localhost:3001';
+  // WEB-LOW-019: null if env unset so CTAs route to /sellers/program instead of localhost
+  const sellerUrl = process.env.NEXT_PUBLIC_SELLER_URL || null;
   const { data: convs } = useMyConversations(isAuthenticated);
   const { data: wallet } = useWallet(isAuthenticated);
   const { data: loyalty } = useLoyalty(isAuthenticated);
@@ -440,8 +441,9 @@ export function Header() {
        moved to the Tier-3 icon-tabs strip below the search bar, so the
        search input is now pure free-text — cleaner header, less crowded
        input field. */
+    // WEB-MED-013: router.push preserves React Query cache instead of full reload
     const params = new URLSearchParams({ q });
-    window.location.assign(`/search?${params.toString()}`);
+    router.push(`/search?${params.toString()}`);
   };
 
   return (
@@ -1264,7 +1266,7 @@ export function Header() {
                       ))}
                       <li>
                         <a
-                          href={sellerUrl}
+                          href={sellerUrl ?? '/sellers/program'}
                           className="
                             flex items-center justify-between
                             px-4 py-3.5 rounded-xl

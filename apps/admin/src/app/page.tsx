@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { Skeleton, motion, useReducedMotion } from '@getx/ui';
 import { AdminShell } from '@/components/admin-shell';
-import { useAdminAlerts, useDashboard, type DashboardData } from '@/hooks/use-admin';
+import { useAdminAlertsCounts, useDashboard, type DashboardData } from '@/hooks/use-admin';
 
 /* GETX Admin — Dashboard.
    ─────────────────────────────────────────────────────────────────────
@@ -109,15 +109,13 @@ function MoneyDisplay({ value, compact = false }: { value: number; compact?: boo
 
 export default function DashboardPage() {
   const { data, isLoading } = useDashboard();
-  const alerts = useAdminAlerts();
+  // SAP-013: single query replaces 4 parallel limit=1 calls
+  const { data: alertCounts, isLoading: alertsLoading } = useAdminAlertsCounts();
 
+  const counts = alertCounts ?? { disputes: 0, pendingListings: 0, removedListings: 0, hiddenReviews: 0 };
   const totalAlerts = useMemo(
-    () =>
-      alerts.counts.disputes +
-      alerts.counts.pendingListings +
-      alerts.counts.removedListings +
-      alerts.counts.hiddenReviews,
-    [alerts.counts],
+    () => counts.disputes + counts.pendingListings + counts.removedListings + counts.hiddenReviews,
+    [counts],
   );
 
   return (
@@ -155,7 +153,7 @@ export default function DashboardPage() {
             title="What needs you right now"
             subtitle="Each tile links to the moderation view filtered for that bucket."
           />
-          <ActionQueue alerts={alerts} />
+          <ActionQueue counts={counts} isLoading={alertsLoading} />
         </motion.section>
 
         {/* ── LIVE KPIs ──────────────────────────────────────────────── */}
@@ -220,13 +218,19 @@ function LiveDot() {
 /* ══════════════════════════════════════════════════════════════════ */
 /*  ACTION QUEUE                                                        */
 /* ══════════════════════════════════════════════════════════════════ */
-function ActionQueue({ alerts }: { alerts: ReturnType<typeof useAdminAlerts> }) {
+function ActionQueue({
+  counts,
+  isLoading,
+}: {
+  counts: { disputes: number; pendingListings: number; removedListings: number; hiddenReviews: number };
+  isLoading: boolean;
+}) {
   const items = [
     {
       key: 'disputes',
       icon: AlertTriangle,
       label: 'Open disputes',
-      count: alerts.counts.disputes,
+      count: counts.disputes,
       tone: 'error',
       href: '/orders?status=DISPUTED',
       hint: 'Orders flagged for support intervention',
@@ -235,7 +239,7 @@ function ActionQueue({ alerts }: { alerts: ReturnType<typeof useAdminAlerts> }) 
       key: 'pendingListings',
       icon: Sparkles,
       label: 'Pending listing review',
-      count: alerts.counts.pendingListings,
+      count: counts.pendingListings,
       tone: 'warning',
       href: '/listings?status=PENDING_REVIEW',
       hint: 'New listings awaiting moderation',
@@ -244,7 +248,7 @@ function ActionQueue({ alerts }: { alerts: ReturnType<typeof useAdminAlerts> }) 
       key: 'removedListings',
       icon: EyeOff,
       label: 'Removed listings',
-      count: alerts.counts.removedListings,
+      count: counts.removedListings,
       tone: 'muted',
       href: '/listings?status=REMOVED',
       hint: 'Listings taken down — audit if needed',
@@ -253,12 +257,13 @@ function ActionQueue({ alerts }: { alerts: ReturnType<typeof useAdminAlerts> }) 
       key: 'hiddenReviews',
       icon: Star,
       label: 'Hidden reviews',
-      count: alerts.counts.hiddenReviews,
+      count: counts.hiddenReviews,
       tone: 'muted',
       href: '/reviews?hidden=true',
       hint: 'Reviews currently hidden by moderators',
     },
   ] as const;
+  void isLoading;
 
   const tones: Record<string, { ring: string; bg: string; iconBg: string; iconFg: string; numFg: string }> = {
     error: {

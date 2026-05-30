@@ -2,11 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { AxiosError } from 'axios';
 import {
   ArrowRight,
-  ChevronLeft,
-  ChevronRight,
   EyeOff,
   Loader2,
   MessageSquareWarning,
@@ -16,6 +13,9 @@ import {
 import { Input, Skeleton, motion, toast } from '@getx/ui';
 import { AdminShell } from '@/components/admin-shell';
 import { useAdminReviews, useHideReview } from '@/hooks/use-admin';
+import { extractMessage } from '@/lib/api-error';
+import { timeAgo } from '@/lib/time';
+import { PaginationButton } from '@/components/ui/pagination-button';
 
 /* GETX Admin — Reviews moderation.
    ─────────────────────────────────────────────────────────────────────
@@ -36,25 +36,6 @@ interface ReviewRow {
   author: { username: string | null; name: string | null };
   target: { username: string | null; name: string | null };
   order: { id: string; orderNumber: string };
-}
-
-function extractMessage(err: unknown): string | null {
-  if (err instanceof AxiosError) {
-    const data = err.response?.data as { message?: string } | undefined;
-    return data?.message ?? null;
-  }
-  return null;
-}
-
-function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diff / 60_000);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return `${d}d ago`;
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 export default function AdminReviewsPage() {
@@ -347,44 +328,6 @@ function ReviewCard({
         )}
       </div>
     </div>
-  );
-}
-
-function PaginationButton({
-  disabled,
-  onClick,
-  dir,
-}: {
-  disabled: boolean;
-  onClick: () => void;
-  dir: 'prev' | 'next';
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`
-        inline-flex items-center gap-1 h-9 px-3.5 rounded-full text-[12.5px] font-semibold transition-colors
-        ${
-          disabled
-            ? 'bg-muted/15 text-muted-foreground/50 cursor-not-allowed'
-            : 'bg-muted/25 hover:bg-muted/40 ring-1 ring-border text-foreground'
-        }
-      `}
-    >
-      {dir === 'prev' ? (
-        <>
-          <ChevronLeft className="h-3.5 w-3.5" />
-          Previous
-        </>
-      ) : (
-        <>
-          Next
-          <ChevronRight className="h-3.5 w-3.5" />
-        </>
-      )}
-    </button>
   );
 }
 

@@ -5,7 +5,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { NotificationType, Prisma } from '@getx/database';
+import { Prisma } from '@getx/database';
+import { NotificationType } from '@getx/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { firstOrigin } from '../common/config-helpers';
@@ -70,19 +71,14 @@ export class NotificationsService {
     params: CreateNotificationParams,
   ): Promise<NotificationListItem | null> {
     try {
-      /* Dedupe gate — if the caller supplied a key, look up a prior
-         notification with the same (userId, type, metadata.dedupeKey)
-         and short-circuit. The lookup uses a JSON-path predicate; not
-         the fastest, but fine for the low-frequency callers (order
-         lifecycle, dispute, payout) that opt in. */
+      // RES-HIGH-051: use the dedicated dedupeKey column — O(1) unique index
+      // lookup replaces the O(n) JSON-path scan on metadata
       if (params.dedupeKey) {
-        const existing = await this.prisma.notification.findFirst({
+        const existing = await this.prisma.notification.findUnique({
           where: {
-            userId: params.userId,
-            type: params.type,
-            metadata: {
-              path: ['dedupeKey'],
-              equals: params.dedupeKey,
+            Notification_userId_dedupeKey_unique: {
+              userId: params.userId,
+              dedupeKey: params.dedupeKey,
             },
           },
           select: LIST_SELECT,
@@ -95,31 +91,7 @@ export class NotificationsService {
         }
       }
 
-      /* Merge dedupeKey into the persisted metadata so the next
-         lookup can find it. metadata is JSON-valued so we only spread
-         when the caller passed a plain object (the typical case);
-         primitives / arrays are wrapped under a `value` key alongside
-         dedupeKey instead of being silently dropped. */
-      const persistedMetadata: Prisma.InputJsonValue | undefined = (() => {
-        if (!params.dedupeKey) return params.metadata;
-        const base = params.metadata;
-        const isPlainObject =
-          base !== null &&
-          base !== undefined &&
-          typeof base === 'object' &&
-          !Array.isArray(base);
-        if (isPlainObject) {
-          return {
-            ...(base as Record<string, Prisma.InputJsonValue>),
-            dedupeKey: params.dedupeKey,
-          };
-        }
-        if (base === undefined || base === null) {
-          return { dedupeKey: params.dedupeKey };
-        }
-        return { value: base, dedupeKey: params.dedupeKey };
-      })();
-
+      // Join user at create time so deliverEmail doesn't need a second query.
       const notification = await this.prisma.notification.create({
         data: {
           userId: params.userId,
@@ -128,21 +100,31 @@ export class NotificationsService {
           message: params.message ?? '',
           link: params.link,
           imageUrl: params.imageUrl,
-          metadata: persistedMetadata,
+          dedupeKey: params.dedupeKey ?? null,
+          metadata: (params.metadata as Prisma.InputJsonValue) ?? Prisma.JsonNull,
         },
-        select: LIST_SELECT,
+        select: {
+          ...LIST_SELECT,
+          // Extra fields needed only for email delivery — excluded from the
+          // returned public shape via the spread below.
+          user: { select: { email: true, name: true, emailNotifications: true } },
+        },
       });
 
       if (params.sendEmail) {
+        const { user, ...notificationRow } = notification;
         // Fire-and-forget — don't block the caller.
-        void this.deliverEmail(notification.id).catch((err) => {
+        void this.deliverEmail(notificationRow.id, user, notificationRow).catch((err) => {
           this.logger.warn(
-            `Notification email failed for ${notification.id}: ${err instanceof Error ? err.message : err}`,
+            `Notification email failed for ${notificationRow.id}: ${err instanceof Error ? err.message : err}`,
           );
         });
+        // Return only the public shape (without the joined user).
+        return notificationRow as NotificationListItem;
       }
 
-      return notification;
+      const { user: _u, ...notificationRow } = notification;
+      return notificationRow as NotificationListItem;
     } catch (err) {
       this.logger.error(
         `Failed to create notification: ${err instanceof Error ? err.message : err}`,
@@ -151,32 +133,28 @@ export class NotificationsService {
     }
   }
 
-  private async deliverEmail(notificationId: string): Promise<void> {
-    const n = await this.prisma.notification.findUnique({
-      where: { id: notificationId },
-      include: {
-        user: {
-          select: { email: true, name: true, emailNotifications: true },
-        },
-      },
-    });
-    if (!n) return;
-
+  // Accepts pre-fetched user data to eliminate the N+1 query that the old
+  // version incurred by re-fetching the notification + user after create.
+  private async deliverEmail(
+    notificationId: string,
+    user: { email: string; name: string | null; emailNotifications: boolean },
+    notification: { title: string; message: string; link: string | null },
+  ): Promise<void> {
     // Respect user's notification preferences.
-    if (!n.user.emailNotifications) {
+    if (!user.emailNotifications) {
       this.logger.debug(`Email skipped — user has emailNotifications=false`);
       return;
     }
 
     const webUrl = firstOrigin(this.config, 'WEB_URL', 'http://localhost:3000');
-    const actionUrl = n.link ? `${webUrl}${n.link}` : webUrl;
+    const actionUrl = notification.link ? `${webUrl}${notification.link}` : webUrl;
 
     try {
       await this.mail.sendNotification({
-        to: n.user.email,
-        subject: n.title,
-        title: n.title,
-        body: n.message || undefined,
+        to: user.email,
+        subject: notification.title,
+        title: notification.title,
+        body: notification.message || undefined,
         actionUrl,
         actionLabel: 'View on GETX',
       });
@@ -192,20 +170,32 @@ export class NotificationsService {
     }
   }
 
-  async listMyNotifications(userId: string, page = 1, limit = 20) {
+  async listMyNotifications(
+    userId: string,
+    page = 1,
+    limit = 20,
+    types?: NotificationType[],
+  ) {
     const safeLimit = Math.min(Math.max(limit, 1), 50);
     const safePage = Math.max(page, 1);
 
+    // Optional type filter — the seller app passes only seller-relevant
+    // types so its bell isn't flooded with buyer-side notifications.
+    const where: Prisma.NotificationWhereInput = {
+      userId,
+      ...(types && types.length ? { type: { in: types } } : {}),
+    };
+
     const [data, total, unreadCount] = await Promise.all([
       this.prisma.notification.findMany({
-        where: { userId },
+        where,
         orderBy: { createdAt: 'desc' },
         skip: (safePage - 1) * safeLimit,
         take: safeLimit,
         select: LIST_SELECT,
       }),
-      this.prisma.notification.count({ where: { userId } }),
-      this.prisma.notification.count({ where: { userId, read: false } }),
+      this.prisma.notification.count({ where }),
+      this.prisma.notification.count({ where: { ...where, read: false } }),
     ]);
 
     return {
@@ -245,9 +235,13 @@ export class NotificationsService {
     return { success: true, updated: result.count };
   }
 
-  async getUnreadCount(userId: string) {
+  async getUnreadCount(userId: string, types?: NotificationType[]) {
     return this.prisma.notification.count({
-      where: { userId, read: false },
+      where: {
+        userId,
+        read: false,
+        ...(types && types.length ? { type: { in: types } } : {}),
+      },
     });
   }
 }

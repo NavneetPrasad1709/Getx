@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { createHash, randomBytes, randomInt } from 'crypto';
+import { createHash, randomBytes, randomInt, timingSafeEqual } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import type { Request, Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
@@ -25,6 +25,13 @@ import {
   shouldFlagName,
 } from './sanctions';
 import { firstOrigin } from '../common/config-helpers';
+import { encryptPii, decryptPii } from '../common/pii-crypto';
+import {
+  generateTotpSecret,
+  totpKeyUri,
+  verifyTotp,
+} from '../common/totp';
+import { STEP_UP_AUDIENCE } from './guards/step-up.guard';
 
 @Injectable()
 export class AuthService {
@@ -48,7 +55,7 @@ export class AuthService {
         action: 'auth.register_blocked_country',
         entity: 'User',
         entityId: 'pending',
-        metadata: { country: dto.country, email: dto.email },
+        metadata: { country: dto.country, emailHash: this.hashEmail(dto.email) },
         ipAddress: req.ip,
         userAgent: req.headers['user-agent'],
         severity: 'WARNING',
@@ -74,7 +81,7 @@ export class AuthService {
         entityId: 'pending',
         metadata: {
           country: dto.country,
-          email: dto.email,
+          emailHash: this.hashEmail(dto.email),
           allowlist: allowlist ? Array.from(allowlist) : null,
         },
         ipAddress: req.ip,
@@ -101,15 +108,17 @@ export class AuthService {
         action: 'auth.register_duplicate_email',
         entity: 'User',
         entityId: existing.id,
-        metadata: { email: dto.email, country: dto.country },
+        metadata: { emailHash: this.hashEmail(dto.email), country: dto.country },
         ipAddress: req.ip,
         userAgent: req.headers['user-agent'],
         severity: 'WARNING',
       });
+      // Return a fake userId so the shape matches a fresh signup — prevents
+      // probing which email addresses are already registered.
       return {
         message:
           'Registration successful. Check your email for verification code.',
-        userId: existing.id,
+        userId: randomBytes(16).toString('hex'),
         email: dto.email,
       };
     }
@@ -121,6 +130,7 @@ export class AuthService {
 
     const hashedPassword = await bcrypt.hash(dto.password, 12);
     const otp = this.generateOTP();
+    const otpHash = createHash('sha256').update(otp).digest('hex');
     const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     const user = await this.prisma.$transaction(async (tx) => {
@@ -144,13 +154,16 @@ export class AuthService {
           pushNotifications: true,
           smsNotifications: true,
         },
+        // Explicit select — never return password hash, 2FA secret, or PII
+        // fields from the create result; a stray logger would ship them.
+        select: { id: true, email: true, name: true, country: true },
       });
 
       await tx.emailVerification.create({
         data: {
           userId: newUser.id,
           email: newUser.email,
-          otp,
+          otp: otpHash,
           expiresAt: otpExpiresAt,
         },
       });
@@ -161,7 +174,7 @@ export class AuthService {
     // Fire-and-forget OTP send so signup response stays fast.
     void this.mail
       .sendVerificationOtp(user.email, user.name || 'there', otp)
-      .catch((err) => console.error('Email send failed:', err));
+      .catch((err) => this.logger.error(`OTP send failed: userId=${user.id}`, err));
 
     await this.audit.log({
       userId: user.id,
@@ -194,19 +207,23 @@ export class AuthService {
       orderBy: { createdAt: 'desc' },
     });
 
-    if (!verification) {
-      throw new BadRequestException('No active verification found');
-    }
-    if (verification.expiresAt < new Date()) {
-      throw new BadRequestException('OTP expired. Request a new one.');
-    }
-    if (verification.attempts >= 5) {
-      throw new BadRequestException(
-        'Too many failed attempts. Request a new OTP.',
-      );
+    // Collapse all invalid/expired/locked-out states into one generic error
+    // to prevent oracle enumeration of verification state.
+    if (
+      !verification ||
+      verification.expiresAt < new Date() ||
+      verification.attempts >= 5
+    ) {
+      throw new BadRequestException('Invalid or expired OTP');
     }
 
-    if (verification.otp !== dto.otp) {
+    const providedHash = createHash('sha256').update(dto.otp).digest('hex');
+    const storedHash = verification.otp;
+    const isMatch =
+      storedHash.length === providedHash.length &&
+      timingSafeEqual(Buffer.from(storedHash), Buffer.from(providedHash));
+
+    if (!isMatch) {
       await this.prisma.emailVerification.update({
         where: { id: verification.id },
         data: { attempts: { increment: 1 } },
@@ -221,7 +238,7 @@ export class AuthService {
         severity: 'WARNING',
       });
 
-      throw new BadRequestException('Invalid OTP');
+      throw new BadRequestException('Invalid or expired OTP');
     }
 
     await this.prisma.$transaction([
@@ -245,19 +262,17 @@ export class AuthService {
 
     void this.mail
       .sendWelcome(verification.user.email, verification.user.name || 'there')
-      .catch((err) => console.error('Welcome email failed:', err));
+      .catch((err) => this.logger.error(`Welcome email failed: userId=${verification.userId}`, err));
 
     return { message: 'Email verified successfully', success: true };
   }
 
   async resendOtp(email: string, req: Request) {
     const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      // Generic response to avoid user enumeration.
+    // Generic response for all non-success cases — prevents oracle enumeration
+    // of whether the email is registered, already verified, or in cooldown.
+    if (!user || user.emailVerified) {
       return { message: 'If account exists, OTP sent.' };
-    }
-    if (user.emailVerified) {
-      throw new BadRequestException('Email already verified');
     }
 
     const lastSent = await this.prisma.emailVerification.findFirst({
@@ -265,24 +280,23 @@ export class AuthService {
       orderBy: { createdAt: 'desc' },
     });
     if (lastSent && Date.now() - lastSent.createdAt.getTime() < 60 * 1000) {
-      throw new BadRequestException(
-        'Please wait 60 seconds before requesting again',
-      );
+      return { message: 'If account exists, OTP sent.' };
     }
 
     const otp = this.generateOTP();
+    const otpHash = createHash('sha256').update(otp).digest('hex');
     await this.prisma.emailVerification.create({
       data: {
         userId: user.id,
         email: user.email,
-        otp,
+        otp: otpHash,
         expiresAt: new Date(Date.now() + 10 * 60 * 1000),
       },
     });
 
     void this.mail
       .sendVerificationOtp(user.email, user.name || 'there', otp)
-      .catch((err) => console.error('OTP resend failed:', err));
+      .catch((err) => this.logger.error(`OTP resend failed: userId=${user.id}`, err));
 
     await this.audit.log({
       userId: user.id,
@@ -292,7 +306,7 @@ export class AuthService {
       ipAddress: req.ip,
     });
 
-    return { message: 'OTP sent successfully' };
+    return { message: 'If account exists, OTP sent.' };
   }
 
   async login(dto: LoginDto, req: Request, res: Response) {
@@ -306,58 +320,74 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    if (user.lockedUntil && user.lockedUntil > new Date()) {
-      throw new UnauthorizedException(
-        `Account locked until ${user.lockedUntil.toLocaleTimeString()}. Try later.`,
-      );
-    }
+    // AUTH-MED-015: Do NOT reveal account state (locked, banned, suspended,
+    // unverified) before the password is confirmed — that leaks account
+    // existence and status to an unauthenticated caller. All pre-success
+    // branches collapse to 'Invalid credentials' until password+2FA pass.
 
-    // OAuth-only accounts have no password — surface a hint instead of
-    // letting bcrypt.compare crash on a null hash.
-    if (!user.password) {
-      throw new UnauthorizedException(
-        'This account was created with Google or Discord. Use the SSO button to sign in.',
-      );
-    }
+    // Constant-time check: always run bcrypt even for locked / OAuth-only
+    // accounts so timing cannot distinguish a wrong-password from a locked
+    // account.  We check the locked flag AFTER bcrypt so the response time
+    // is identical for all failure paths.
+    const passwordToCheck = user.password ?? '';
+    const isValid = await bcrypt.compare(dto.password, passwordToCheck || '$2b$12$invalidhashpadding00000000000000000000000000000000000000');
 
-    const isValid = await bcrypt.compare(dto.password, user.password);
+    if (!isValid || !user.password) {
+      // Only increment the failed-login counter when the account has a
+      // password (OAuth-only accounts shouldn't be lockable via the
+      // password path).
+      if (user.password) {
+        const newCount = user.failedLoginCount + 1;
+        const lockedUntil =
+          newCount >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null;
 
-    if (!isValid) {
-      const newCount = user.failedLoginCount + 1;
-      const lockedUntil =
-        newCount >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null;
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: { failedLoginCount: newCount, lockedUntil },
+        });
 
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: { failedLoginCount: newCount, lockedUntil },
-      });
-
-      await this.audit.log({
-        userId: user.id,
-        action: 'auth.login_failed',
-        entity: 'User',
-        entityId: user.id,
-        ipAddress: req.ip,
-        userAgent: req.headers['user-agent'],
-        severity: newCount >= 5 ? 'WARNING' : 'INFO',
-      });
+        await this.audit.log({
+          userId: user.id,
+          action: 'auth.login_failed',
+          entity: 'User',
+          entityId: user.id,
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'],
+          severity: newCount >= 5 ? 'WARNING' : 'INFO',
+        });
+      }
 
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    if (!user.emailVerified) {
-      throw new UnauthorizedException('Please verify your email first');
-    }
-    if (user.status === 'BANNED')
-      throw new UnauthorizedException('Account banned');
-    if (user.status === 'DELETED')
-      throw new UnauthorizedException('Account deleted');
-    if (user.status === 'SUSPENDED') {
-      throw new UnauthorizedException(
-        user.suspendedUntil
-          ? `Account suspended until ${user.suspendedUntil.toLocaleDateString()}`
-          : 'Account suspended',
-      );
+    // Password verified — NOW check account eligibility. Generic error
+    // message used for all cases to avoid leaking which specific gate failed.
+    const isLockedOut = user.lockedUntil && user.lockedUntil > new Date();
+    const isIneligible =
+      isLockedOut ||
+      !user.emailVerified ||
+      user.status === 'BANNED' ||
+      user.status === 'DELETED' ||
+      user.status === 'SUSPENDED';
+
+    if (isIneligible) {
+      // Audit the specific reason server-side for ops visibility.
+      const reason = isLockedOut
+        ? 'locked'
+        : !user.emailVerified
+          ? 'unverified'
+          : user.status?.toLowerCase() ?? 'unknown';
+      await this.audit.log({
+        userId: user.id,
+        action: 'auth.login_ineligible',
+        entity: 'User',
+        entityId: user.id,
+        metadata: { reason },
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        severity: 'WARNING',
+      });
+      throw new UnauthorizedException('Invalid credentials');
     }
 
     await this.prisma.user.update({
@@ -371,8 +401,10 @@ export class AuthService {
       },
     });
 
-    const tokens = await this.generateTokens(user);
-    this.setAuthCookies(res, tokens, dto.rememberMe ?? false);
+    const rememberMe = dto.rememberMe ?? false;
+    const refreshTtlMs = rememberMe ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+    const tokens = await this.generateTokens(user, undefined, refreshTtlMs);
+    this.setAuthCookies(res, tokens, refreshTtlMs);
 
     await this.audit.log({
       userId: user.id,
@@ -431,38 +463,63 @@ export class AuthService {
       data: { revoked: true, revokedAt: new Date() },
     });
 
+    /* AUTH-003 — preserve the session's ABSOLUTE expiry across rotation.
+       Carrying the existing token's expiresAt forward (instead of resetting to
+       7 days every refresh) means a non-remember-me session still dies 24h
+       after login, and a remember-me session can't be silently extended into
+       an effectively immortal session by refreshing just before expiry.
+       remainingMs is > 0 here — the expired branch above already returned. */
+    const remainingMs = Math.max(
+      0,
+      tokenRecord.expiresAt.getTime() - Date.now(),
+    );
     const tokens = await this.generateTokens(
       tokenRecord.user,
       tokenRecord.family,
+      remainingMs,
     );
-    this.setAuthCookies(res, tokens, true);
+    this.setAuthCookies(res, tokens, remainingMs);
 
     return { tokens };
   }
 
   async logout(
-    userId: string,
     refreshToken: string | undefined,
     req: Request,
     res: Response,
   ) {
+    let userId: string | null = null;
+
     if (refreshToken) {
-      await this.prisma.refreshToken.updateMany({
-        where: { token: this.hashRefreshToken(refreshToken), userId },
-        data: { revoked: true, revokedAt: new Date() },
+      const record = await this.prisma.refreshToken.findUnique({
+        where: { token: this.hashRefreshToken(refreshToken) },
+        select: { userId: true },
       });
+      if (record) {
+        userId = record.userId;
+        await this.prisma.refreshToken.updateMany({
+          where: { token: this.hashRefreshToken(refreshToken) },
+          data: { revoked: true, revokedAt: new Date() },
+        });
+      } else {
+        this.logger.warn('auth.logout_no_match: refresh token not in DB', { ip: req.ip });
+      }
+    } else {
+      this.logger.warn('auth.logout_no_match: no refresh token cookie', { ip: req.ip });
     }
 
     this.clearAuthCookies(res);
 
-    await this.audit.log({
-      userId,
-      action: 'auth.logout',
-      entity: 'User',
-      entityId: userId,
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent'],
-    });
+    if (userId) {
+      await this.audit.log({
+        userId,
+        action: 'auth.logout',
+        entity: 'User',
+        entityId: userId,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+    }
 
     return { message: 'Logged out successfully' };
   }
@@ -474,19 +531,21 @@ export class AuthService {
     }
 
     const token = randomBytes(48).toString('base64url');
+    const tokenHash = createHash('sha256').update(token).digest('hex');
     await this.prisma.passwordReset.create({
       data: {
         userId: user.id,
-        token,
+        token: tokenHash,
         expiresAt: new Date(Date.now() + 60 * 60 * 1000),
       },
     });
 
+    // URL carries the plaintext token; DB stores only the hash.
     const resetUrl = `${firstOrigin(this.config, 'WEB_URL', 'http://localhost:3000')}/auth/reset-password?token=${token}`;
 
     void this.mail
       .sendPasswordReset(user.email, user.name || 'there', resetUrl)
-      .catch((err) => console.error('Reset email failed:', err));
+      .catch((err) => this.logger.error(`Reset email failed: userId=${user.id}`, err));
 
     await this.audit.log({
       userId: user.id,
@@ -500,8 +559,9 @@ export class AuthService {
   }
 
   async resetPassword(dto: ResetPasswordDto, req: Request) {
+    const tokenHash = createHash('sha256').update(dto.token).digest('hex');
     const reset = await this.prisma.passwordReset.findUnique({
-      where: { token: dto.token },
+      where: { token: tokenHash },
     });
 
     if (!reset || reset.used || reset.expiresAt < new Date()) {
@@ -561,6 +621,7 @@ export class AuthService {
       provider: 'google' | 'discord';
       providerId: string;
       email: string;
+      emailVerified: boolean;
       name: string | null;
       avatar: string | null;
       accessToken: string;
@@ -579,15 +640,42 @@ export class AuthService {
       include: { user: true },
     });
 
+    /* AUTH-004 — account-takeover guard. A first-time OAuth identity is only
+       allowed to LINK to (or pre-verify) an account by email when the provider
+       asserts the email is verified. Without this, anyone who registers a
+       provider account under a victim's unverified email could log straight
+       into the victim's GETX account. Returning identities (existingOAuth)
+       are already proven, so they skip the check. */
+    if (!existingOAuth && !profile.emailVerified) {
+      await this.audit.log({
+        action: 'auth.oauth_unverified_email_rejected',
+        entity: 'User',
+        entityId: 'pending',
+        metadata: {
+          provider: profile.provider,
+          emailHash: this.hashEmail(profile.email),
+        },
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        severity: 'WARNING',
+      });
+      const login = firstOrigin(this.config, 'WEB_URL', 'http://localhost:3000');
+      res.redirect(`${login}/auth/login?error=oauth_email_unverified`);
+      return;
+    }
+
     let user;
     if (existingOAuth) {
       // Case 1 — refresh the cached tokens + opportunistically update
       // the profile name/avatar if Google/Discord sent newer values.
+      // AUTH-005: provider tokens are stored encrypted at rest.
       await this.prisma.oAuthAccount.update({
         where: { id: existingOAuth.id },
         data: {
-          accessToken: profile.accessToken,
-          refreshToken: profile.refreshToken ?? existingOAuth.refreshToken,
+          accessToken: this.encryptOAuthToken(profile.accessToken),
+          refreshToken: profile.refreshToken
+            ? this.encryptOAuthToken(profile.refreshToken)
+            : existingOAuth.refreshToken,
         },
       });
       user = existingOAuth.user;
@@ -604,8 +692,8 @@ export class AuthService {
             provider: profile.provider,
             providerId: profile.providerId,
             providerEmail: profile.email,
-            accessToken: profile.accessToken,
-            refreshToken: profile.refreshToken,
+            accessToken: this.encryptOAuthToken(profile.accessToken),
+            refreshToken: this.encryptOAuthToken(profile.refreshToken),
           },
         });
         await this.audit.log({
@@ -647,8 +735,8 @@ export class AuthService {
                 provider: profile.provider,
                 providerId: profile.providerId,
                 providerEmail: profile.email,
-                accessToken: profile.accessToken,
-                refreshToken: profile.refreshToken,
+                accessToken: this.encryptOAuthToken(profile.accessToken),
+                refreshToken: this.encryptOAuthToken(profile.refreshToken),
               },
             },
           },
@@ -682,10 +770,9 @@ export class AuthService {
       },
     });
 
-    const tokens = await this.generateTokens(user);
-    // OAuth flows imply "remember me" — the user explicitly chose to
-    // sign in via a connected account, so issue a 7-day refresh token.
-    this.setAuthCookies(res, tokens, true);
+    const oauthRefreshTtlMs = 7 * 24 * 60 * 60 * 1000; // OAuth flows imply remember-me
+    const tokens = await this.generateTokens(user, undefined, oauthRefreshTtlMs);
+    this.setAuthCookies(res, tokens, oauthRefreshTtlMs);
 
     await this.audit.log({
       userId: user.id,
@@ -704,7 +791,7 @@ export class AuthService {
     return;
   }
 
-  async me(userId: string) {
+  async me(userId: string): Promise<Record<string, unknown>> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -757,6 +844,9 @@ export class AuthService {
     try {
       const payload = await this.jwt.verifyAsync<{ sub: string }>(token, {
         secret: this.config.get<string>('JWT_ACCESS_SECRET'),
+        algorithms: ['HS256'],
+        issuer: 'getx.live',
+        audience: 'getx-api',
       });
       if (!payload?.sub) return { user: null };
       const user = await this.me(payload.sub);
@@ -802,6 +892,188 @@ export class AuthService {
     };
   }
 
+  // ─── Two-factor (TOTP) + step-up (AUTH-008 / AUTH-010) ───
+
+  async getTwoFactorStatus(userId: string): Promise<{ enabled: boolean }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { twoFactorEnabled: true },
+    });
+    if (!user) throw new NotFoundException();
+    return { enabled: user.twoFactorEnabled };
+  }
+
+  /* Begin enrollment: generate a secret, store it ENCRYPTED in UserPii, and
+     return the plaintext once (to the authenticated owner) so the client can
+     render the QR / offer manual key entry. 2FA is not active until enable()
+     confirms the user can produce a valid code. */
+  async setupTwoFactor(
+    userId: string,
+  ): Promise<{ secret: string; otpauthUrl: string }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, twoFactorEnabled: true },
+    });
+    if (!user) throw new NotFoundException();
+    if (user.twoFactorEnabled) {
+      throw new BadRequestException(
+        'Two-factor is already enabled. Disable it before re-enrolling.',
+      );
+    }
+
+    const secret = generateTotpSecret();
+    await this.prisma.userPii.upsert({
+      where: { userId },
+      create: { userId, twoFactorSecret: encryptPii(secret) },
+      update: { twoFactorSecret: encryptPii(secret) },
+    });
+
+    return { secret, otpauthUrl: totpKeyUri(user.email, 'GETX', secret) };
+  }
+
+  async enableTwoFactor(
+    userId: string,
+    code: string,
+  ): Promise<{ enabled: boolean }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { twoFactorEnabled: true },
+    });
+    if (!user) throw new NotFoundException();
+    if (user.twoFactorEnabled) return { enabled: true };
+
+    const pii = await this.prisma.userPii.findUnique({
+      where: { userId },
+      select: { twoFactorSecret: true },
+    });
+    if (!pii?.twoFactorSecret) {
+      throw new BadRequestException('Start two-factor setup first.');
+    }
+    if (!verifyTotp(code, decryptPii(pii.twoFactorSecret))) {
+      throw new BadRequestException(
+        'Invalid code. Check your authenticator app and try again.',
+      );
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { twoFactorEnabled: true },
+    });
+    await this.audit.log({
+      userId,
+      action: 'auth.2fa_enabled',
+      entity: 'User',
+      entityId: userId,
+      severity: 'WARNING',
+    });
+    return { enabled: true };
+  }
+
+  async disableTwoFactor(
+    userId: string,
+    code: string,
+  ): Promise<{ enabled: boolean }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { twoFactorEnabled: true },
+    });
+    if (!user) throw new NotFoundException();
+    if (!user.twoFactorEnabled) return { enabled: false };
+
+    const pii = await this.prisma.userPii.findUnique({
+      where: { userId },
+      select: { twoFactorSecret: true },
+    });
+    const secret = pii?.twoFactorSecret ? decryptPii(pii.twoFactorSecret) : null;
+    // Require a valid current code to turn 2FA off — stops a hijacked session
+    // from silently stripping the second factor.
+    if (!secret || !verifyTotp(code, secret)) {
+      throw new BadRequestException('Invalid code.');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: { twoFactorEnabled: false },
+      }),
+      this.prisma.userPii.update({
+        where: { userId },
+        data: { twoFactorSecret: null },
+      }),
+    ]);
+    await this.audit.log({
+      userId,
+      action: 'auth.2fa_disabled',
+      entity: 'User',
+      entityId: userId,
+      severity: 'WARNING',
+    });
+    return { enabled: false };
+  }
+
+  /* Re-authenticate for a CRITICAL action. If 2FA is on, a TOTP code is
+     required; otherwise the account password. On success, mint a 5-minute
+     step-up token (aud getx-stepup) the client replays as X-Step-Up-Token. */
+  async stepUp(
+    userId: string,
+    dto: { password?: string; totpCode?: string },
+    req: Request,
+  ): Promise<{ stepUpToken: string; expiresIn: number }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { password: true, twoFactorEnabled: true },
+    });
+    if (!user) throw new NotFoundException();
+
+    let ok = false;
+    if (user.twoFactorEnabled) {
+      const pii = await this.prisma.userPii.findUnique({
+        where: { userId },
+        select: { twoFactorSecret: true },
+      });
+      const secret = pii?.twoFactorSecret
+        ? decryptPii(pii.twoFactorSecret)
+        : null;
+      ok = !!secret && !!dto.totpCode && verifyTotp(dto.totpCode, secret);
+    } else if (user.password && dto.password) {
+      ok = await bcrypt.compare(dto.password, user.password);
+    }
+
+    if (!ok) {
+      await this.audit.log({
+        userId,
+        action: 'auth.step_up_failed',
+        entity: 'User',
+        entityId: userId,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        severity: 'WARNING',
+      });
+      throw new UnauthorizedException('Re-authentication failed.');
+    }
+
+    const secret = this.config.get<string>('JWT_ACCESS_SECRET')!;
+    const stepUpToken = await this.jwt.signAsync(
+      { sub: userId, su: true },
+      {
+        secret,
+        expiresIn: '5m',
+        algorithm: 'HS256',
+        issuer: 'getx.live',
+        audience: STEP_UP_AUDIENCE,
+      },
+    );
+    await this.audit.log({
+      userId,
+      action: 'auth.step_up_ok',
+      entity: 'User',
+      entityId: userId,
+      ipAddress: req.ip,
+      severity: 'INFO',
+    });
+    return { stepUpToken, expiresIn: 300 };
+  }
+
   // ─── helpers ───────────────────────────────────────────
 
   private generateOTP(): string {
@@ -814,35 +1086,36 @@ export class AuthService {
   private async generateTokens(
     user: { id: string; email: string; role: string },
     family?: string,
+    // AUTH-MED-027: caller passes the TTL so DB expiresAt and cookie maxAge
+    // are always in sync. Defaults to 7 days (remember-me / OAuth flows).
+    refreshTtlMs: number = 7 * 24 * 60 * 60 * 1000,
   ) {
     const tokenFamily = family || randomBytes(16).toString('base64url');
 
     const accessSecret = this.config.get<string>('JWT_ACCESS_SECRET')!;
-    const refreshSecret = this.config.get<string>('JWT_REFRESH_SECRET')!;
-    const accessExpires =
-      this.config.get<string>('JWT_ACCESS_EXPIRES') || '15m';
-    const refreshExpires =
-      this.config.get<string>('JWT_REFRESH_EXPIRES') || '7d';
+    const accessExpires = this.config.get<string>('JWT_ACCESS_EXPIRES') || '15m';
 
     const accessToken = await this.jwt.signAsync(
       { sub: user.id, email: user.email, role: user.role },
-      { secret: accessSecret, expiresIn: accessExpires as unknown as number },
+      {
+        secret: accessSecret,
+        expiresIn: accessExpires as unknown as number,
+        algorithm: 'HS256',
+        issuer: 'getx.live',
+        audience: 'getx-api',
+      },
     );
 
-    const refreshToken = await this.jwt.signAsync(
-      { sub: user.id, family: tokenFamily },
-      { secret: refreshSecret, expiresIn: refreshExpires as unknown as number },
-    );
+    // Opaque refresh token — no JWT wrapper. DB stores only the SHA-256 hash
+    // so a DB dump can't produce a usable token.
+    const refreshToken = randomBytes(48).toString('base64url');
 
     await this.prisma.refreshToken.create({
       data: {
         userId: user.id,
-        // Stored as SHA-256 hex so a DB read alone can't surrender a
-        // usable refresh JWT. The unique constraint still applies (hash
-        // of an HMAC-signed JWT is collision-resistant in practice).
         token: this.hashRefreshToken(refreshToken),
         family: tokenFamily,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        expiresAt: new Date(Date.now() + refreshTtlMs),
       },
     });
 
@@ -853,10 +1126,43 @@ export class AuthService {
     return createHash('sha256').update(token).digest('hex');
   }
 
+  /* AUTH-005 — provider OAuth tokens are secrets (they grant API access to the
+     user's Google/Discord account). Store them AES-256-GCM encrypted, reusing
+     the same key/helper as withdrawal PII, so a DB dump never yields usable
+     provider credentials. */
+  private encryptOAuthToken(token: string | null): string | null {
+    return token ? encryptPii(token) : null;
+  }
+
+  /* AUTH-011 — short-lived, WS-scoped ticket for the socket.io handshake.
+     Distinct `aud: getx-ws` means the API's JwtAuthGuard (which requires
+     `aud: getx-api`) rejects it, so a leaked ticket cannot call REST routes;
+     the ~60s lifetime bounds the replay window for the handshake itself. */
+  async issueWsTicket(userId: string): Promise<{ token: string }> {
+    const secret = this.config.get<string>('JWT_ACCESS_SECRET')!;
+    const token = await this.jwt.signAsync(
+      { sub: userId, type: 'ws' },
+      {
+        secret,
+        expiresIn: '60s',
+        algorithm: 'HS256',
+        issuer: 'getx.live',
+        audience: 'getx-ws',
+      },
+    );
+    return { token };
+  }
+
+  private hashEmail(email: string): string {
+    return createHash('sha256').update(email.toLowerCase().trim()).digest('hex');
+  }
+
   private setAuthCookies(
     res: Response,
     tokens: { accessToken: string; refreshToken: string },
-    rememberMe: boolean,
+    // AUTH-MED-027: accept the exact TTL (ms) so cookie maxAge always
+    // matches the DB RefreshToken.expiresAt — no more boolean/duration skew.
+    refreshTtlMs: number,
   ) {
     const isProd = this.config.get<string>('NODE_ENV') === 'production';
     const domain = this.config.get<string>('COOKIE_DOMAIN');
@@ -882,7 +1188,7 @@ export class AuthService {
 
     res.cookie('refreshToken', tokens.refreshToken, {
       ...baseOptions,
-      maxAge: rememberMe ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000,
+      maxAge: refreshTtlMs,
     });
   }
 
@@ -902,9 +1208,35 @@ export class AuthService {
     res.clearCookie('refreshToken', opts);
   }
 
-  private sanitizeUser<T extends Record<string, unknown>>(user: T) {
-    const { password, twoFactorSecret, aadhaarHash, panHash, ...safe } =
-      user as Record<string, unknown>;
-    return safe;
+  private sanitizeUser(user: Record<string, unknown>) {
+    // Explicit allowlist — avoids leaking op-state fields (failedLoginCount,
+    // lastLoginIp, lockedUntil, banReason, unsubscribeToken, etc.) that
+    // a spread-minus approach would silently include as columns are added.
+    return {
+      id: user['id'],
+      email: user['email'],
+      name: user['name'],
+      username: user['username'],
+      avatar: user['avatar'],
+      role: user['role'],
+      country: user['country'],
+      status: user['status'],
+      emailVerified: user['emailVerified'],
+      phoneVerified: user['phoneVerified'],
+      kycLevel: user['kycLevel'],
+      kycStatus: user['kycStatus'],
+      isSeller: user['isSeller'],
+      sellerRating: user['sellerRating'],
+      verifiedTier: user['verifiedTier'],
+      buyerWallet: user['buyerWallet'],
+      sellerWallet: user['sellerWallet'],
+      pendingEarnings: user['pendingEarnings'],
+      totalEarned: user['totalEarned'],
+      totalSales: user['totalSales'],
+      onboardingCompleted: user['onboardingCompleted'],
+      interestedInSelling: user['interestedInSelling'],
+      marketingOptIn: user['marketingOptIn'],
+      createdAt: user['createdAt'],
+    };
   }
 }

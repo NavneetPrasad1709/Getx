@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { getRedisClient } from '../common/redis.factory';
 
 interface RateLimitWindow {
   count: number;
@@ -18,9 +19,12 @@ export type SocketRateLimitEvent =
   | 'leave_conversation';
 
 /**
- * In-memory token-bucket rate limiter for WebSocket events. Per-user,
- * per-event-type. Single-process — for multi-replica production replace
- * the Map with a Redis-backed counter (INCR + EXPIRE).
+ * Per-user, per-event-type rate limiter for WebSocket events.
+ *
+ * BE-01: when REDIS_URL is set the counter is a shared Redis fixed-window
+ * (INCR + PEXPIRE) so the limit holds across every API replica; otherwise it
+ * falls back to the in-process Map (single-replica / dev). Either way `consume`
+ * is async so the gateway awaits the decision before handling the event.
  */
 @Injectable()
 export class SocketRateLimiter {
@@ -34,11 +38,39 @@ export class SocketRateLimiter {
     leave_conversation: { max: 30, windowMs: 60_000 },
   };
 
-  consume(
+  async consume(
     userId: string,
     event: SocketRateLimitEvent,
-  ): { allowed: boolean; retryAfterMs?: number } {
+  ): Promise<{ allowed: boolean; retryAfterMs?: number }> {
     const config = this.limits[event];
+
+    const redis = getRedisClient();
+    if (redis) {
+      try {
+        const key = `wsrl:${userId}:${event}`;
+        const count = await redis.incr(key);
+        if (count === 1) await redis.pexpire(key, config.windowMs);
+        if (count > config.max) {
+          const ttl = await redis.pttl(key);
+          return {
+            allowed: false,
+            retryAfterMs: ttl > 0 ? ttl : config.windowMs,
+          };
+        }
+        return { allowed: true };
+      } catch {
+        // Fail open to the in-memory path below on any Redis error.
+      }
+    }
+
+    return this.consumeInMemory(userId, event, config);
+  }
+
+  private consumeInMemory(
+    userId: string,
+    event: SocketRateLimitEvent,
+    config: LimitConfig,
+  ): { allowed: boolean; retryAfterMs?: number } {
     const key = `${userId}:${event}`;
     const now = Date.now();
     const bucket = this.buckets.get(key);

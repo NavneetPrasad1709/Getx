@@ -26,15 +26,14 @@ export const HideContentSchema = z.object({
 export const ListAuditLogsSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(50),
-  userId: z.string().optional(),
-  action: z.string().optional(),
-  // Match the actual AuditSeverity enum (DEBUG/INFO/WARNING/ERROR/CRITICAL),
-  // not the prompt's LOW/MEDIUM/HIGH/CRITICAL.
+  // RES-HIGH-035: bounded + regex-validated to prevent SCAN amplification
+  userId: z.string().regex(/^[a-z0-9_-]{1,40}$/i).optional(),
+  action: z.string().max(100).regex(/^[a-zA-Z0-9._:-]+$/).optional(),
   severity: z
     .enum(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'])
     .optional(),
-  startDate: z.string().optional(),
-  endDate: z.string().optional(),
+  startDate: z.string().datetime().optional(),
+  endDate: z.string().datetime().optional(),
 });
 
 export const ListOrdersSchema = z.object({
@@ -77,6 +76,21 @@ export const ListReviewsSchema = z.object({
   hidden: z.coerce.boolean().default(false),
 });
 
+// PAY-HIGH-013: dispute resolution
+export const ResolveDisputeSchema = z.object({
+  resolution: z.enum(['REFUND_BUYER', 'RELEASE_TO_SELLER', 'PARTIAL_REFUND', 'NO_ACTION']),
+  notes: z.string().min(10).max(2000),
+  refundAmount: z.coerce.number().min(0).optional(),
+});
+
+// PAY-HIGH-015: withdrawal state machine
+export const WithdrawalActionSchema = z.object({
+  notes: z.string().max(500).optional(),
+});
+export const RejectWithdrawalSchema = z.object({
+  reason: z.string().min(5).max(500),
+});
+
 export type ListUsersDto = z.infer<typeof ListUsersSchema>;
 export type UserActionDto = z.infer<typeof UserActionSchema>;
 export type RefundOrderDto = z.infer<typeof RefundOrderSchema>;
@@ -85,3 +99,6 @@ export type ListAuditLogsDto = z.infer<typeof ListAuditLogsSchema>;
 export type ListOrdersDto = z.infer<typeof ListOrdersSchema>;
 export type ListListingsDto = z.infer<typeof ListListingsSchema>;
 export type ListReviewsDto = z.infer<typeof ListReviewsSchema>;
+export type ResolveDisputeDto = z.infer<typeof ResolveDisputeSchema>;
+export type WithdrawalActionDto = z.infer<typeof WithdrawalActionSchema>;
+export type RejectWithdrawalDto = z.infer<typeof RejectWithdrawalSchema>;

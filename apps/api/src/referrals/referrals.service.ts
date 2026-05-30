@@ -38,7 +38,7 @@ export class ReferralsService {
     });
 
     const lifetimeEarned = rewards.reduce(
-      (sum, r) => sum + (r.amount > 0 ? r.amount : 0),
+      (sum, r) => sum + (r.amount.toNumber() > 0 ? r.amount.toNumber() : 0),
       0,
     );
 
@@ -49,7 +49,7 @@ export class ReferralsService {
          model lands we can't count this accurately; surface 0 to avoid
          lying to the buyer. */
       pendingCount: 0,
-      rewardedCount: rewards.filter((r) => r.amount > 0).length,
+      rewardedCount: rewards.filter((r) => r.amount.toNumber() > 0).length,
       rewards,
     };
   }
@@ -88,7 +88,7 @@ export class ReferralsService {
     return aggregated.map((a, i) => ({
       rank: i + 1,
       username: handleFor.get(a.userId) ?? 'anon',
-      earned: a._sum.amount ?? 0,
+      earned: a._sum.amount?.toNumber() ?? 0,
     }));
   }
 }

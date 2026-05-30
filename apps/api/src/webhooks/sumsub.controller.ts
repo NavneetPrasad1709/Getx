@@ -15,6 +15,7 @@ import type { Request } from 'express';
 import { z } from 'zod';
 import { Public } from '../auth/decorators/public.decorator';
 import { AccountService } from '../account/account.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 // Defence-in-depth — even after HMAC verification we still validate the
 // payload shape so an authenticated-but-malformed event can't crash the
@@ -23,6 +24,8 @@ const SumsubPayloadSchema = z.object({
   applicantId: z.string().min(1).max(200),
   externalUserId: z.string().max(200).optional(),
   type: z.string().min(1).max(100),
+  // createdAt from Sumsub — ISO string used as part of idempotency key
+  createdAt: z.string().max(40).optional(),
   reviewResult: z
     .object({
       reviewAnswer: z.enum(['GREEN', 'RED', 'YELLOW']),
@@ -43,6 +46,7 @@ export class SumsubWebhookController {
   constructor(
     private config: ConfigService,
     private account: AccountService,
+    private prisma: PrismaService,
   ) {}
 
   @Public()
@@ -71,10 +75,16 @@ export class SumsubWebhookController {
       )
         .update(rawBody)
         .digest('hex');
+      // PAY-MED-033: use hex encoding on both sides — without 'hex' flag,
+      // Buffer.from() treats strings as UTF-8 which silently fails for
+      // uppercase-hex signatures Sumsub may send
+      const expectedBuf = Buffer.from(expected, 'hex');
+      const sigBuf = Buffer.from(signature ?? '', 'hex');
       if (
         !signature ||
-        expected.length !== signature.length ||
-        !timingSafeEqual(Buffer.from(expected), Buffer.from(signature))
+        expectedBuf.length === 0 ||
+        sigBuf.length !== expectedBuf.length ||
+        !timingSafeEqual(sigBuf, expectedBuf)
       ) {
         this.logger.warn('Sumsub webhook signature mismatch');
         throw new BadRequestException('Invalid signature');
@@ -98,6 +108,32 @@ export class SumsubWebhookController {
     }
 
     const body: SumsubPayload = SumsubPayloadSchema.parse(rawPayload);
+
+    // PAY-HIGH-012: idempotency — keyed by applicantId:type:createdAt so a
+    // replayed GREEN event doesn't re-flip kycStatus after a manual REJECT
+    const idempotencyKey = `${body.applicantId}:${body.type}:${body.createdAt ?? 'unknown'}`;
+    try {
+      await this.prisma.webhookEvent.create({
+        data: {
+          provider: 'sumsub',
+          externalId: idempotencyKey,
+          type: body.type,
+        },
+      });
+    } catch (err) {
+      if (
+        err &&
+        typeof err === 'object' &&
+        'code' in err &&
+        (err as { code?: string }).code === 'P2002'
+      ) {
+        this.logger.log(
+          `Sumsub webhook idempotent skip (already processed): ${idempotencyKey}`,
+        );
+        return { ok: true };
+      }
+      throw err;
+    }
 
     try {
       await this.account.handleSumsubWebhook(body);

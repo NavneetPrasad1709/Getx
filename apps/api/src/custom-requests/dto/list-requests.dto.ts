@@ -9,8 +9,9 @@ export const ListRequestsSchema = z.object({
     .optional(),
 
   /* Federated-search query — case-insensitive substring across title +
-     description. Bounded length keeps the query plan cheap. */
-  q: z.string().trim().min(2).max(80).optional(),
+     description. min(3) matches the GIN trigram floor (pg_trgm requires
+     3-char n-grams; shorter terms fall back to a sequential scan). */
+  q: z.string().trim().min(3).max(80).optional(),
 
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),

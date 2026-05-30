@@ -5,8 +5,10 @@ const HTTP_SCHEME = /^https?:\/\//i;
 // dev fallback in apps/api/src/uploads (P10) which inlines uploads as
 // data:image/<mime>;base64,... when R2 isn't configured. Crucially this
 // REJECTS data:text/html,... and other XSS-friendly payloads.
+// RES-HIGH-003: SVG removed — SVG <script> tags would be stored XSS on any
+// page that renders the URL via an <img> or dangerously-set innerHTML
 const IMAGE_DATA_URL =
-  /^data:image\/(png|jpe?g|webp|gif|svg\+xml);base64,[A-Za-z0-9+/=]+$/;
+  /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/;
 
 /**
  * Strict http(s)-only URL. Use for any user-provided URL that doesn't need

@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { Button } from '@getx/ui';
 import { Header } from '@/components/header';
@@ -36,6 +36,19 @@ function TopUpsBrowseContent() {
   const router = useRouter();
   const pathname = usePathname();
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+
+  // WEB-MED a11y: Escape closes drawer; body scroll locks while open
+  useEffect(() => {
+    if (!showMobileFilters) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowMobileFilters(false); };
+    document.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [showMobileFilters]);
 
   const filters: ListingFilters = {
     gameSlug: 'pokemon-go',
@@ -117,9 +130,45 @@ function TopUpsBrowseContent() {
 
       <main className="flex-1 container pb-20">
         <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-8">
-          <aside className={`${showMobileFilters ? 'block' : 'hidden'} md:block md:sticky md:top-44 md:self-start md:max-h-[calc(100vh-200px)] md:overflow-y-auto`}>
+          {/* Desktop sidebar */}
+          <aside className="hidden md:block md:sticky md:top-44 md:self-start md:max-h-[calc(100vh-200px)] md:overflow-y-auto">
             <TopUpsFilters filters={filters} onUpdate={updateFilters} onClear={clearFilters} />
           </aside>
+
+          {/* Mobile bottom-sheet — proper dialog with focus management */}
+          {showMobileFilters ? (
+            <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label="Filters">
+              <button
+                type="button"
+                aria-label="Close filters"
+                onClick={() => setShowMobileFilters(false)}
+                className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              />
+              <div className="absolute inset-x-0 bottom-0 max-h-[85vh] rounded-t-2xl bg-background ring-1 ring-border shadow-[0_-12px_40px_-12px_rgb(0_0_0_/_0.4)] flex flex-col">
+                <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-border/60 shrink-0">
+                  <div>
+                    <div className="font-mono text-[10.5px] uppercase tracking-[0.2em] text-primary font-bold">Refine</div>
+                    <div className="font-display font-bold text-foreground text-[16px]">Filters</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowMobileFilters(false)}
+                    aria-label="Close filters"
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-foreground/[0.06] hover:bg-foreground/[0.10] text-foreground transition-colors font-bold text-lg"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto px-5 py-4">
+                  <TopUpsFilters filters={filters} onUpdate={updateFilters} onClear={clearFilters} />
+                </div>
+                <div className="shrink-0 px-5 py-4 border-t border-border/60 flex items-center gap-2">
+                  <Button variant="outline" className="flex-1 h-11" onClick={clearFilters}>Clear all</Button>
+                  <Button className="flex-1 h-11" onClick={() => setShowMobileFilters(false)}>Apply</Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           <div>
             {isLoading && (

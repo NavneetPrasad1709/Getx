@@ -57,12 +57,13 @@ model User {
   preferredCurrency String @default("USD")
 
   // ═══ KYC (country-aware, lazy) ═══
-  kycLevel           KycLevel  @default(LEVEL_0)
-  kycStatus          KycStatus @default(NONE)
-  kycProvider        String? // "sumsub", "digio", "manual"
+  kycLevel           KycLevel    @default(LEVEL_0)
+  kycStatus          KycStatus   @default(NONE)
+  // DB-021: enum replaces free-text "sumsub" / "digio" / "manual"
+  kycProvider        KycProvider?
   kycSubmittedAt     DateTime?
   kycVerifiedAt      DateTime?
-  kycRejectionReason String?   @db.Text
+  kycRejectionReason String?     @db.Text
 
   // Sumsub (global users)
   sumsubApplicantId    String? @unique
@@ -100,17 +101,11 @@ model User {
   lifetimeLoyaltyPoints Int @default(0) // never decreases; powers rank too
 
   // ═══ Wallets (USD only — convert to INR at withdrawal) ═══
-  buyerWallet     Float @default(0)
-  sellerWallet    Float @default(0) // Available to withdraw
-  pendingEarnings Float @default(0) // In escrow
-  totalEarned     Float @default(0)
-  totalSpent      Float @default(0)
-
-  // ═══ Bank/payment details (encrypted) ═══
-  upiId                String?
-  bankAccountEncrypted String? // JSON-encrypted: {accountNumber, ifsc, bankName, holderName}
-  paypalEmail          String?
-  wiseEmail            String?
+  buyerWallet     Decimal @default(0) @db.Decimal(14, 2)
+  sellerWallet    Decimal @default(0) @db.Decimal(14, 2) // Available to withdraw
+  pendingEarnings Decimal @default(0) @db.Decimal(14, 2) // In escrow
+  totalEarned     Decimal @default(0) @db.Decimal(14, 2)
+  totalSpent      Decimal @default(0) @db.Decimal(14, 2)
 
   // ═══ Stripe Connect Express (seller payouts) ═══
   // `accountId` is the acct_xxx returned by Stripe on first Express
@@ -124,15 +119,17 @@ model User {
   stripeConnectOnboardedAt     DateTime?
 
   // ═══ Account status ═══
-  status         UserStatus @default(ACTIVE)
-  banReason      String?    @db.Text
-  bannedAt       DateTime?
-  bannedBy       String? // Admin user ID
+  status        UserStatus @default(ACTIVE)
+  banReason     String?    @db.Text
+  bannedAt      DateTime?
+  // DB-027: FK relation replaces bare String admin-ID
+  bannedById    String?
+  bannedByAdmin User?      @relation("UserBannedBy", fields: [bannedById], references: [id], onDelete: SetNull)
   suspendedUntil DateTime?
 
   // ═══ Security ═══
   twoFactorEnabled   Boolean   @default(false)
-  twoFactorSecret    String? // TOTP secret (encrypted)
+  // twoFactorSecret moved to UserPii (DB-031 PII split)
   lastLoginAt        DateTime?
   lastLoginIp        String?
   lastLoginUserAgent String?
@@ -200,6 +197,16 @@ model User {
   paymentMethods     PaymentMethod[]
   dataExportRequests DataExportRequest[]
 
+  // DB-027..031: admin-action back-refs (FK targets for *ById columns)
+  bannedUsers        User[]        @relation("UserBannedBy")
+  kycDocumentReviews KycDocument[] @relation("KycDocumentReviewer")
+  withdrawalReviews  Withdrawal[]  @relation("WithdrawalReviewer")
+  disputeResolutions Dispute[]     @relation("DisputeResolver")
+  cancelledOrders    Order[]       @relation("OrderCancelledBy")
+
+  // DB-031: sensitive payout rails + 2FA secret live in UserPii
+  pii UserPii?
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime? // Soft delete
@@ -210,6 +217,9 @@ model User {
   @@index([kycStatus])
   @@index([email])
   @@index([createdAt])
+  @@index([deletedAt])
+  @@index([status, xp])
+  @@index([status, rankUpdatedAt])
 }
 
 enum UserRole {
@@ -253,6 +263,13 @@ enum KycStatus {
   EXPIRED
 }
 
+// DB-021: replaces kycProvider String? // "sumsub", "digio", "manual"
+enum KycProvider {
+  SUMSUB
+  DIGIO
+  MANUAL
+}
+
 enum DocumentType {
   AADHAAR_CARD // India
   PAN_CARD // India
@@ -268,6 +285,29 @@ enum VerifiedTier {
   VERIFIED // 5+ orders, 4.5+ rating
   PREMIUM // 50+ orders, 4.8+ rating
   ELITE // 200+ orders, 4.9+ rating
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PII SPLIT — sensitive payout rails + 2FA secret (DB-031)
+// ═══════════════════════════════════════════════════════════════
+// Separate table so this data can have independent retention policy,
+// encryption-at-rest scope, and RLS rules without touching the User row.
+
+model UserPii {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Payout rails (encrypted at application layer)
+  upiId                String?
+  bankAccountEncrypted String?
+  paypalEmail          String?
+  wiseEmail            String?
+
+  // TOTP secret — encrypted; never logged or returned to client
+  twoFactorSecret String?
+
+  updatedAt DateTime @updatedAt
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -429,8 +469,10 @@ model KycDocument {
 
   status      KycStatus @default(SUBMITTED)
   reviewNotes String?   @db.Text
-  reviewedBy  String?
-  reviewedAt  DateTime?
+  // DB-028: FK relation replaces bare String admin-ID
+  reviewedById  String?
+  reviewedByAdmin User? @relation("KycDocumentReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt    DateTime?
 
   expiresAt DateTime?
 
@@ -481,7 +523,6 @@ model Game {
   updatedAt DateTime @updatedAt
 
   @@index([isActive, sortOrder])
-  @@index([slug])
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -509,9 +550,9 @@ model CustomRequest {
   images String[]
 
   // Budget (USD)
-  budgetMin Float
-  budgetMax Float
-  currency  String @default("USD")
+  budgetMin Decimal @db.Decimal(14, 2)
+  budgetMax Decimal @db.Decimal(14, 2)
+  currency  String  @default("USD")
 
   // Tab-specific attributes (JSON for flexibility)
   attributes Json
@@ -521,7 +562,8 @@ model CustomRequest {
   deliveryDays Int      @default(7)
   expiresAt    DateTime
 
-  platform String? // "iOS", "Android", "PC"
+  // DB-023: enum replaces free-text "iOS" / "Android" / "PC"
+  platform Platform?
 
   status RequestStatus @default(OPEN)
 
@@ -567,6 +609,14 @@ enum RequestStatus {
   DISPUTED
 }
 
+// DB-023: replaces platform String? // "iOS", "Android", "PC"
+enum Platform {
+  IOS
+  ANDROID
+  PC
+  WEB
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  OFFERS (sellers' bids on Custom Requests)
 // ═══════════════════════════════════════════════════════════════
@@ -585,8 +635,8 @@ model Offer {
   buyer   User   @relation("OfferBuyer", fields: [buyerId], references: [id])
 
   // Pricing (USD)
-  price    Float
-  currency String @default("USD")
+  price    Decimal @db.Decimal(14, 2)
+  currency String  @default("USD")
 
   deliveryHours Int
 
@@ -612,6 +662,7 @@ model Offer {
   @@unique([requestId, sellerId])
   @@index([requestId, status])
   @@index([sellerId, status])
+  @@index([buyerId, status, createdAt])
   @@index([expiresAt])
 }
 
@@ -639,7 +690,8 @@ model ProductListing {
   game   Game   @relation(fields: [gameId], references: [id])
 
   tabType     TabType
-  productType String // "pokecoins", "items-bundle", "account"
+  // DB-025: enum replaces free-text productType string
+  productType ProductType
 
   title       String @db.VarChar(150)
   description String @db.Text
@@ -650,9 +702,9 @@ model ProductListing {
   videoUrl String?
 
   // Pricing (USD)
-  price           Float
-  currency        String @default("USD")
-  originalPrice   Float?
+  price           Decimal  @db.Decimal(14, 2)
+  currency        String   @default("USD")
+  originalPrice   Decimal? @db.Decimal(14, 2)
   discountPercent Int?
 
   // Stock
@@ -688,11 +740,26 @@ model ProductListing {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
+  @@index([gameId, tabType, status, createdAt])
   @@index([gameId, tabType, status])
   @@index([sellerId, status])
   @@index([status, createdAt])
   @@index([price])
   @@index([sku])
+  @@index([isFeatured, featuredUntil])
+  @@index([deletedAt])
+  // DB-032: cursor pagination for getMyListings — stable (createdAt DESC, id) ordering
+  @@index([sellerId, deletedAt, createdAt, id])
+}
+
+// DB-025: replaces productType String (freetext)
+enum ProductType {
+  POKECOINS
+  ITEMS_BUNDLE
+  ACCOUNT
+  SERVICE
+  TOP_UP
+  OTHER
 }
 
 enum DeliveryType {
@@ -734,38 +801,42 @@ model Order {
   sellerId String
   seller   User   @relation("SellerOrders", fields: [sellerId], references: [id])
 
+  // PAY-HIGH-024: promoted from paymentMetadata JSON so stock restoration
+  // in processPaymentFailed is reliable even after metadata is overwritten
+  quantity Int @default(1)
+
   // ═══ Pricing breakdown (USD) ═══
-  amount     Float // Order amount (what was agreed)
-  buyerFee   Float // Platform fee (8%)
-  buyerTotal Float // amount + buyerFee
+  amount     Decimal @db.Decimal(14, 2) // Order amount (what was agreed)
+  buyerFee   Decimal @db.Decimal(14, 2) // Platform fee (8%)
+  buyerTotal Decimal @db.Decimal(14, 2) // amount + buyerFee
 
   // GETX Coins / buyer wallet credit applied to this order. Subtracted
   // from the chargeable amount at checkout time. Debited from
   // User.buyerWallet immediately on apply; refunded on cancel.
-  walletApplied Float @default(0)
+  walletApplied Decimal @default(0) @db.Decimal(14, 2)
 
   // Loyalty points redeemed at checkout. usdValue stays in lockstep
   // with points (1 pt = $0.01). Cannot stack with walletApplied — the
   // checkout flow enforces exclusivity. Debited from User.loyaltyPoints
   // on apply; restored on cancel.
-  loyaltyPointsApplied Int   @default(0)
-  loyaltyUsdApplied    Float @default(0)
+  loyaltyPointsApplied Int     @default(0)
+  loyaltyUsdApplied    Decimal @default(0) @db.Decimal(14, 2)
 
   // Stripe Tax / Razorpay GST / etc — sales tax / VAT collected at
   // checkout. Stripe Tax populates this from the buyer's billing
   // address. Breakdown JSON holds per-jurisdiction lines for the
   // receipt PDF.
-  taxAmount    Float @default(0)
+  taxAmount    Decimal @default(0) @db.Decimal(14, 2)
   taxBreakdown Json?
 
-  sellerCommission Float // Platform commission (10%)
-  sellerAmount     Float // amount - commission
+  sellerCommission Decimal @db.Decimal(14, 2) // Platform commission (10%)
+  sellerAmount     Decimal @db.Decimal(14, 2) // amount - commission
 
   // ═══ FX (locked at payment time) ═══
-  fxRate          Float?
-  fxMargin        Float?
+  fxRate          Decimal?  @db.Decimal(12, 6)
+  fxMargin        Decimal?  @db.Decimal(12, 6)
   fxLockedAt      DateTime?
-  sellerAmountInr Float?
+  sellerAmountInr Decimal?  @db.Decimal(14, 2)
 
   currency String @default("USD")
 
@@ -774,8 +845,9 @@ model Order {
 
   // ═══ Payment provider ═══
   paymentProvider      PaymentProvider?
-  paymentMethod        String? // "card", "upi", "paypal", "crypto"
-  paymentTransactionId String?
+  // DB-022: enum replaces free-text "card" / "upi" / "paypal" / "crypto"
+  paymentMethod        OrderPaymentMethod?
+  paymentTransactionId String?             @unique
   paymentCapturedAt    DateTime?
   paymentMetadata      Json?
 
@@ -790,13 +862,15 @@ model Order {
 
   // ═══ Refund ═══
   refundedAt          DateTime?
-  refundReason        String?   @db.Text
-  refundAmount        Float?
+  refundReason        String?  @db.Text
+  refundAmount        Decimal? @db.Decimal(14, 2)
   refundTransactionId String?
 
   // ═══ Cancellation ═══
   cancelledAt        DateTime?
-  cancelledBy        String?
+  // DB-031: FK relation replaces bare String
+  cancelledById      String?
+  cancelledByUser    User?     @relation("OrderCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
   cancellationReason String?   @db.Text
 
   // ═══ Buyer info (snapshot for compliance) ═══
@@ -816,11 +890,11 @@ model Order {
   @@index([status])
   @@index([createdAt])
   @@index([orderNumber])
-  // Covers the escrow auto-release cron (escrowStatus=HELD + autoReleaseAt<now).
-  // Replaces the prior single-column [autoReleaseAt] index.
   @@index([escrowStatus, autoReleaseAt])
-  // Admin / seller dashboards filter by status with a recency sort.
   @@index([status, createdAt])
+  @@index([buyerId, status, createdAt])
+  @@index([sellerId, status, createdAt])
+  @@index([paymentTransactionId])
 }
 
 enum OrderStatus {
@@ -852,6 +926,15 @@ enum PaymentProvider {
   STRIPE
 }
 
+// DB-022: replaces paymentMethod String? // "card", "upi", "paypal", "crypto"
+enum OrderPaymentMethod {
+  CARD
+  UPI
+  PAYPAL
+  CRYPTO
+  WALLET
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  CONVERSATIONS + MESSAGES (per-order or per-offer chat)
 // ═══════════════════════════════════════════════════════════════
@@ -862,9 +945,9 @@ model Conversation {
   // Linked to ONE of Order, Offer, or Listing (pre-purchase). Each unique
   // on its side so duplicates can't be created.
   orderId String? @unique
-  order   Order?  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: Restrict)
   offerId String? @unique
-  offer   Offer?  @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  offer   Offer?  @relation(fields: [offerId], references: [id], onDelete: Restrict)
   // Pre-purchase chat — buyer messaging seller about a listing without
   // creating an order yet. Multiple PRE_PURCHASE conversations can share
   // the same listingId (one per buyer), so this is NOT unique.
@@ -895,8 +978,8 @@ model Conversation {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([buyerId, status])
-  @@index([sellerId, status])
+  @@index([buyerId, status, lastMessageAt])
+  @@index([sellerId, status, lastMessageAt])
   @@index([lastMessageAt])
   @@index([listingId, buyerId])
 }
@@ -1009,16 +1092,17 @@ model WalletTransaction {
   user   User   @relation(fields: [userId], references: [id])
 
   type     TxnType
-  amount   Float
+  amount   Decimal @db.Decimal(14, 2)
   currency String  @default("USD")
 
-  orderId      String?
-  withdrawalId String?
-  refundId     String?
+  orderId        String?
+  withdrawalId   String?
+  refundId       String?
+  idempotencyKey String? @unique
 
   // Balance tracking (for audit)
-  balanceBefore Float
-  balanceAfter  Float
+  balanceBefore Decimal @db.Decimal(14, 2)
+  balanceAfter  Decimal @db.Decimal(14, 2)
 
   description String
   metadata    Json?
@@ -1054,19 +1138,20 @@ model Withdrawal {
   user   User   @relation(fields: [userId], references: [id])
 
   // Amounts (USD)
-  amount    Float
-  fee       Float
-  netAmount Float
+  amount    Decimal @db.Decimal(14, 2)
+  fee       Decimal @db.Decimal(14, 2)
+  netAmount Decimal @db.Decimal(14, 2)
 
   // FX (for INR conversion)
-  fxRate       Float
-  fxProvider   String? // "wise", "razorpayx"
-  amountInr    Float?
-  netAmountInr Float?
+  // DB-026: enum replaces free-text "wise" / "razorpayx"
+  fxRate       Decimal    @db.Decimal(12, 6)
+  fxProvider   FxProvider?
+  amountInr    Decimal?   @db.Decimal(14, 2)
+  netAmountInr Decimal?   @db.Decimal(14, 2)
 
   method WithdrawalMethod
 
-  // Method-specific (encrypted)
+  // Method-specific (encrypted per-withdrawal snapshot)
   upiId                String?
   bankAccountLast4     String?
   bankIfsc             String?
@@ -1079,8 +1164,10 @@ model Withdrawal {
   providerTransactionId String?
   providerName          String?
 
-  rejectionReason String?   @db.Text
-  reviewedBy      String?
+  rejectionReason String?  @db.Text
+  // DB-029: FK relation replaces bare String admin-ID
+  reviewedById    String?
+  reviewedByAdmin User?    @relation("WithdrawalReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   reviewedAt      DateTime?
 
   requestedAt DateTime  @default(now())
@@ -1090,7 +1177,7 @@ model Withdrawal {
   failedAt    DateTime?
   failReason  String?
 
-  @@index([userId, status])
+  @@index([userId, status, requestedAt])
   @@index([status, requestedAt])
   @@index([withdrawalNumber])
 }
@@ -1115,15 +1202,24 @@ enum WithdrawalStatus {
   CANCELLED
 }
 
+// DB-026: replaces fxProvider String? // "wise", "razorpayx"
+enum FxProvider {
+  WISE
+  RAZORPAYX
+  MANUAL
+}
+
 model Payout {
   id String @id @default(cuid())
 
   orderId String
   order   Order  @relation(fields: [orderId], references: [id])
 
-  sellerId String
-  amount   Float
-  currency String
+  sellerId               String
+  amount                 Decimal @db.Decimal(14, 2)
+  currency               String  @default("USD")
+  providerTransactionId  String? @unique
+  idempotencyKey         String? @unique
 
   status PayoutStatus @default(PENDING)
 
@@ -1134,6 +1230,7 @@ model Payout {
 
   createdAt DateTime @default(now())
 
+  @@unique([orderId, sellerId])
   @@index([orderId])
   @@index([sellerId])
   @@index([status])
@@ -1176,11 +1273,13 @@ model Dispute {
   priority DisputePriority @default(NORMAL)
 
   // Resolution
-  resolvedAt      DateTime?
-  resolvedBy      String? // Admin user ID
-  resolution      DisputeResolution?
-  resolutionNotes String?            @db.Text
-  refundAmount    Float?
+  resolvedAt    DateTime?
+  // DB-030: FK relation replaces bare String admin-ID
+  resolvedById  String?
+  resolvedByAdmin User?             @relation("DisputeResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  resolution    DisputeResolution?
+  resolutionNotes String?  @db.Text
+  refundAmount    Decimal? @db.Decimal(14, 2)
 
   // SLA tracking
   firstResponseAt  DateTime?
@@ -1192,7 +1291,8 @@ model Dispute {
   @@index([orderId])
   @@index([status])
   @@index([assigneeId])
-  @@index([priority, status])
+  @@index([priority, status, createdAt])
+  @@index([creatorId, status])
 }
 
 enum DisputeReason {
@@ -1248,6 +1348,9 @@ model Notification {
 
   imageUrl String?
 
+  // RES-HIGH-051: first-class column replaces JSON-path metadata scan
+  dedupeKey String? @db.VarChar(200)
+
   read   Boolean   @default(false)
   readAt DateTime?
 
@@ -1262,6 +1365,7 @@ model Notification {
 
   createdAt DateTime @default(now())
 
+  @@unique([userId, dedupeKey], name: "Notification_userId_dedupeKey_unique")
   @@index([userId, read, createdAt])
   @@index([type])
 }
@@ -1330,7 +1434,7 @@ model AuditLog {
   id String @id @default(cuid())
 
   userId String?
-  user   User?   @relation(fields: [userId], references: [id])
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   action   String // "user.login", "order.create", "withdrawal.process"
   entity   String // "User", "Order", "Withdrawal"
@@ -1343,17 +1447,26 @@ model AuditLog {
   userAgent String?
   sessionId String?
 
-  source String? // "web", "api", "admin", "system"
+  // DB-024: enum replaces free-text "web" / "api" / "admin" / "system"
+  source AuditSource?
 
   severity AuditSeverity @default(INFO)
 
   createdAt DateTime @default(now())
 
-  @@index([userId])
+  @@index([userId, createdAt])
   @@index([entity, entityId])
   @@index([createdAt])
   @@index([action])
   @@index([severity])
+}
+
+// DB-024: replaces source String? // "web", "api", "admin", "system"
+enum AuditSource {
+  WEB
+  API
+  ADMIN
+  SYSTEM
 }
 
 enum AuditSeverity {
@@ -1430,7 +1543,7 @@ model SavedSearch {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  ADDRESS BOOK (required for GST invoice)
+//  ADDRESS BOOK
 // ═══════════════════════════════════════════════════════════════
 
 model Address {
@@ -1439,8 +1552,6 @@ model Address {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Recipient + delivery — kept lean for India-first; full international
-  // address-format support comes when non-INR markets open.
   fullName    String  @db.VarChar(120)
   phone       String? @db.VarChar(20)
   line1       String  @db.VarChar(200)
@@ -1449,11 +1560,7 @@ model Address {
   state       String  @db.VarChar(80)
   postalCode  String  @db.VarChar(16)
   country     String  @default("US") // ISO 2-letter
-  // Buyer-set hint shown on the address card ("Home" / "Office" / "Mom's").
   label       String? @db.VarChar(40)
-  // Generic tax identifier — India GSTIN (15 chars), EU VAT ID, US EIN,
-  // BR CPF/CNPJ, etc. Validated client-side per country. Required for
-  // B2B itemised invoices where applicable.
   taxId       String? @db.VarChar(40)
   isDefault   Boolean @default(false)
 

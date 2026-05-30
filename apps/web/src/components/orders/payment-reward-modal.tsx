@@ -49,7 +49,9 @@ export function PaymentRewardModal({ orderId, open, onClose }: PaymentRewardModa
   const [copied, setCopied] = React.useState(false);
 
   const code = mine?.code ?? '';
-  const shareUrl = code ? `https://getx.live/r/${code}` : '';
+  // WEB-LOW-045: use env-based SITE_URL so apex/www switch doesn't break referrals
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://getx.live';
+  const shareUrl = code ? `${siteUrl}/r/${code}` : '';
 
   const handleUnlock = React.useCallback(() => {
     setUnlocked(true);

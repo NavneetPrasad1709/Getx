@@ -12,6 +12,7 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import type { PaymentMethod } from '@getx/database';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { RequireOwnership } from '../auth/decorators/require-ownership.decorator';
 import { PaymentMethodsService } from './payment-methods.service';
 import {
   CreatePaymentMethodSchema,
@@ -39,6 +40,7 @@ export class PaymentMethodsController {
   }
 
   @Patch(':id')
+  @RequireOwnership('paymentMethod')
   update(
     @CurrentUser('id') userId: string,
     @Param('id') id: string,
@@ -49,6 +51,7 @@ export class PaymentMethodsController {
   }
 
   @Delete(':id')
+  @RequireOwnership('paymentMethod')
   @HttpCode(HttpStatus.OK)
   remove(
     @CurrentUser('id') userId: string,

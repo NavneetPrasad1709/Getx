@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { HARD_BLOCKED_COUNTRIES } from './sanctions';
+import { withCronLock } from '../common/cron-lock';
 
 /* Daily sanctions sweep — catches accounts whose country was added to
    the hard-block list after signup, or which had no country recorded
@@ -26,7 +27,12 @@ export class SanctionsCron {
   ) {}
 
   @Cron(CronExpression.EVERY_DAY_AT_3AM, { name: 'sanctionsSweep' })
-  async sweep(): Promise<{ scanned: number; flagged: number }> {
+  async sweep(): Promise<{ scanned: number; flagged: number } | undefined> {
+    // Only one replica runs the suspension sweep per tick.
+    return withCronLock('sanctionsSweep', 10 * 60 * 1000, () => this.runSweep());
+  }
+
+  private async runSweep(): Promise<{ scanned: number; flagged: number }> {
     const candidates = await this.prisma.user.findMany({
       where: {
         status: 'ACTIVE',

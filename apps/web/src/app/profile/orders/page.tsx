@@ -10,10 +10,11 @@ import { useMyOrders, type OrderListItem } from '@/hooks/use-orders';
 import { useAuth } from '@/hooks/use-auth';
 
 function rowTitle(order: OrderListItem): string {
+  // WEB-HIGH-024: snapshotTitle first — it's the human label; slug is URL-encoded
   return (
-    order.productListing?.slug ??
+    (order.paymentMetadata?.snapshotTitle as string | undefined) ??
     order.customRequest?.title ??
-    order.paymentMetadata?.snapshotTitle ??
+    order.productListing?.slug ??
     `Order ${order.orderNumber}`
   );
 }

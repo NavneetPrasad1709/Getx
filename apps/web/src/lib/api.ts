@@ -94,7 +94,9 @@ api.interceptors.response.use(
       // On public pages (landing, marketing, browse) just propagate the 401
       // and let the caller decide what to render.
       if (typeof window !== 'undefined' && !isPublicPath(window.location.pathname)) {
-        window.location.href = '/auth/login';
+        // WEB-MED-014: preserve current path so buyer mid-checkout doesn't lose their place
+        const next = encodeURIComponent(window.location.pathname + window.location.search);
+        window.location.href = `/auth/login?next=${next}`;
       }
       return Promise.reject(refreshError);
     }

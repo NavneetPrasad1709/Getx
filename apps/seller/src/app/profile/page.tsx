@@ -230,7 +230,7 @@ export default function ProfilePage() {
             rating={user.sellerRating}
             totalSales={user.totalSales}
             memberSince={memberSince}
-            kycApproved={kyc.data?.status === 'APPROVED'}
+            kycApproved={kyc.data?.status === 'VERIFIED'}
             emailVerified={!!user.emailVerified}
           />
         </motion.div>
@@ -513,8 +513,9 @@ function HeroIdentity({
         <div className="relative shrink-0">
           <div className="h-24 w-24 sm:h-28 sm:w-28 rounded-2xl bg-gradient-to-br from-primary/35 to-accent/35 grid place-items-center text-foreground font-display font-black text-3xl ring-4 ring-surface shadow-[0_12px_28px_-8px_hsl(var(--primary)/0.4)]">
             {avatar ? (
+              // SAP-CRIT-020: referrerPolicy prevents IP/UA tracking via attacker-controlled URLs
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={avatar} alt="" className="h-full w-full rounded-2xl object-cover" />
+              <img src={avatar} alt="" referrerPolicy="no-referrer" className="h-full w-full rounded-2xl object-cover" />
             ) : (
               initials
             )}
@@ -622,7 +623,7 @@ function TierBadge({ tier }: { tier: string }) {
 /* ══════════════════════════════════════════════════════════════════ */
 /*  KYC CARD                                                            */
 /* ══════════════════════════════════════════════════════════════════ */
-type KycStatusKey = 'NONE' | 'IN_REVIEW' | 'APPROVED' | 'REJECTED' | string;
+type KycStatusKey = 'NONE' | 'IN_REVIEW' | 'VERIFIED' | 'REJECTED' | string;
 
 function KycCard({
   status,
@@ -640,7 +641,7 @@ function KycCard({
   starting: boolean;
 }) {
   const stage =
-    status === 'APPROVED' ? 3 : status === 'IN_REVIEW' ? 2 : status === 'REJECTED' ? 1 : 0;
+    status === 'VERIFIED' ? 3 : status === 'IN_REVIEW' ? 2 : status === 'REJECTED' ? 1 : 0;
 
   return (
     <div className="rounded-3xl bg-surface ring-1 ring-border overflow-hidden">
@@ -700,7 +701,7 @@ function KycBanner({
   verifiedAt: string | null | undefined;
   rejectionReason: string | null | undefined;
 }) {
-  if (status === 'APPROVED') {
+  if (status === 'VERIFIED') {
     return (
       <div className="bg-gradient-to-r from-success/20 via-success/8 to-transparent px-5 sm:px-6 py-4 flex items-center gap-3">
         <div className="grid place-items-center h-11 w-11 rounded-2xl bg-success/20 text-success ring-1 ring-success/30">
@@ -821,7 +822,7 @@ function KycAction({
   onStart: () => void;
   starting: boolean;
 }) {
-  if (status === 'APPROVED') {
+  if (status === 'VERIFIED') {
     return (
       <div className="flex items-center justify-between gap-3 rounded-2xl bg-success/8 ring-1 ring-success/20 px-4 py-3 flex-wrap">
         <div className="flex items-center gap-2">

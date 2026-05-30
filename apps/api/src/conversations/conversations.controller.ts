@@ -11,7 +11,9 @@ import {
   Query,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import { z } from 'zod';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { RequireOwnership } from '../auth/decorators/require-ownership.decorator';
 import {
   ConversationsService,
   type ConversationDetail,
@@ -35,6 +37,8 @@ export class ConversationsController {
     return this.convs.listMyConversations(userId);
   }
 
+  // RES-HIGH-006: throttle conversation starts to prevent P2002 storms
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post()
   startConversation(
     @CurrentUser('id') userId: string,
@@ -45,6 +49,7 @@ export class ConversationsController {
   }
 
   @Get(':id')
+  @RequireOwnership('conversation')
   getConversation(
     @Param('id') id: string,
     @CurrentUser('id') userId: string,
@@ -53,6 +58,7 @@ export class ConversationsController {
   }
 
   @Get(':id/messages')
+  @RequireOwnership('conversation')
   listMessages(
     @Param('id') id: string,
     @CurrentUser('id') userId: string,
@@ -68,6 +74,7 @@ export class ConversationsController {
   }
 
   @Post(':id/messages')
+  @RequireOwnership('conversation')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @HttpCode(HttpStatus.CREATED)
   sendMessage(
@@ -83,6 +90,7 @@ export class ConversationsController {
   }
 
   @Patch(':id/read')
+  @RequireOwnership('conversation')
   markAsRead(
     @Param('id') id: string,
     @CurrentUser('id') userId: string,
@@ -101,19 +109,15 @@ export class ConversationsController {
     @CurrentUser('id') userId: string,
     @Body() body: unknown,
   ): Promise<ConversationDetail> {
-    const listingId =
-      typeof body === 'object' && body !== null && 'listingId' in body
-        ? String(body.listingId)
-        : null;
-    if (!listingId) {
-      throw new BadRequestException('listingId required');
-    }
+    // RES-MED-037: use Zod instead of manual typeof check
+    const { listingId } = z.object({ listingId: z.string().min(1).max(40) }).parse(body);
     return this.convs.openPrePurchaseChat(userId, listingId);
   }
 
   /* Seller flags a pre-purchase chat as spam — blocks the buyer from
      re-opening for the same listing. */
   @Post(':id/spam')
+  @RequireOwnership('conversation')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   markSpam(

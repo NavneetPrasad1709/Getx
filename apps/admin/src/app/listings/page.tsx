@@ -2,11 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { AxiosError } from 'axios';
 import {
   AlertTriangle,
-  ChevronLeft,
-  ChevronRight,
   EyeOff,
   Eye as EyeOpen,
   Loader2,
@@ -18,6 +15,8 @@ import {
 import { Input, Skeleton, motion, toast } from '@getx/ui';
 import { AdminShell } from '@/components/admin-shell';
 import { useAdminListings, useHideListing, useUnhideListing } from '@/hooks/use-admin';
+import { extractMessage } from '@/lib/api-error';
+import { PaginationButton } from '@/components/ui/pagination-button';
 
 /* GETX Admin — Listings moderation queue.
    ─────────────────────────────────────────────────────────────────────
@@ -47,14 +46,6 @@ interface ListingRow {
   seller: { id: string; username: string | null; name: string | null };
 }
 
-function extractMessage(err: unknown): string | null {
-  if (err instanceof AxiosError) {
-    const data = err.response?.data as { message?: string } | undefined;
-    return data?.message ?? null;
-  }
-  return null;
-}
-
 export default function AdminListingsPage() {
   const sp = useSearchParams();
   const initialStatus = sp.get('status') ?? '';
@@ -63,6 +54,8 @@ export default function AdminListingsPage() {
   const [query, setQuery] = useState('');
   const [hideTarget, setHideTarget] = useState<string | null>(null);
   const [hideReason, setHideReason] = useState('');
+  // SAP-007: inline confirm state replaces native confirm() for unhide action
+  const [unhideConfirmTarget, setUnhideConfirmTarget] = useState<string | null>(null);
 
   useEffect(() => {
     setStatusFilter(sp.get('status') ?? '');
@@ -93,10 +86,10 @@ export default function AdminListingsPage() {
   };
 
   const handleUnhide = async (listingId: string) => {
-    if (!confirm('Restore this listing?')) return;
     try {
       await unhide.mutateAsync(listingId);
       toast.success('Listing restored');
+      setUnhideConfirmTarget(null);
       void refetch();
     } catch (err) {
       toast.error(extractMessage(err) ?? 'Unhide failed');
@@ -216,6 +209,9 @@ export default function AdminListingsPage() {
                   onUnhide={() => handleUnhide(listing.id)}
                   hidePending={hide.isPending}
                   unhidePending={unhide.isPending}
+                  isConfirmingUnhide={unhideConfirmTarget === listing.id}
+                  onRequestUnhide={() => setUnhideConfirmTarget(listing.id)}
+                  onCancelUnhide={() => setUnhideConfirmTarget(null)}
                 />
               </motion.div>
             ))}
@@ -257,6 +253,9 @@ function ListingRowCard({
   onUnhide,
   hidePending,
   unhidePending,
+  isConfirmingUnhide,
+  onRequestUnhide,
+  onCancelUnhide,
 }: {
   listing: ListingRow;
   isHiding: boolean;
@@ -267,6 +266,9 @@ function ListingRowCard({
   onUnhide: () => void;
   hidePending: boolean;
   unhidePending: boolean;
+  isConfirmingUnhide: boolean;
+  onRequestUnhide: () => void;
+  onCancelUnhide: () => void;
 }) {
   const meta = STATUS_META[listing.status] ?? STATUS_META.ACTIVE;
   const removed = listing.status === 'REMOVED';
@@ -342,19 +344,36 @@ function ListingRowCard({
                 </button>
               </div>
             ) : removed ? (
-              <button
-                type="button"
-                onClick={onUnhide}
-                disabled={unhidePending}
-                className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full bg-success/10 ring-1 ring-success/25 text-success text-[12px] font-bold hover:bg-success/20 disabled:opacity-50 transition-colors"
-              >
-                {unhidePending ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
+              // SAP-007: inline confirm replaces native confirm() for unhide
+              isConfirmingUnhide ? (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[12px] font-semibold text-foreground">Restore?</span>
+                  <button
+                    type="button"
+                    onClick={onCancelUnhide}
+                    className="h-9 px-3 rounded-full bg-muted/25 hover:bg-muted/40 text-[12px] font-semibold transition-colors"
+                  >
+                    No
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onUnhide}
+                    disabled={unhidePending}
+                    className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full bg-success/10 ring-1 ring-success/25 text-success text-[12px] font-bold hover:bg-success/20 disabled:opacity-50 transition-colors"
+                  >
+                    {unhidePending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Yes, restore'}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onRequestUnhide}
+                  className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full bg-success/10 ring-1 ring-success/25 text-success text-[12px] font-bold hover:bg-success/20 transition-colors"
+                >
                   <EyeOpen className="h-3.5 w-3.5" />
-                )}
-                Unhide
-              </button>
+                  Unhide
+                </button>
+              )
             ) : (
               <button
                 type="button"
@@ -424,44 +443,6 @@ function StatusPill({ status }: { status: string }) {
     >
       {status.replace('_', ' ')}
     </span>
-  );
-}
-
-function PaginationButton({
-  disabled,
-  onClick,
-  dir,
-}: {
-  disabled: boolean;
-  onClick: () => void;
-  dir: 'prev' | 'next';
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`
-        inline-flex items-center gap-1 h-9 px-3.5 rounded-full text-[12.5px] font-semibold transition-colors
-        ${
-          disabled
-            ? 'bg-muted/15 text-muted-foreground/50 cursor-not-allowed'
-            : 'bg-muted/25 hover:bg-muted/40 ring-1 ring-border text-foreground'
-        }
-      `}
-    >
-      {dir === 'prev' ? (
-        <>
-          <ChevronLeft className="h-3.5 w-3.5" />
-          Previous
-        </>
-      ) : (
-        <>
-          Next
-          <ChevronRight className="h-3.5 w-3.5" />
-        </>
-      )}
-    </button>
   );
 }
 

@@ -83,7 +83,7 @@ export default function PokemonGoHubPage() {
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
 
-      <main className="flex-1">
+      <main id="main" className="flex-1">
         <GameHero />
         <CategoryGrid />
         <TopPicksSection />
@@ -100,14 +100,11 @@ export default function PokemonGoHubPage() {
 function GameHero() {
   const reduce = useReducedMotion();
   return (
-    <section className="relative overflow-hidden border-b border-border/40">
+    <section aria-label="Pokémon GO marketplace" className="relative overflow-hidden border-b border-border/40">
+      {/* WEB-MED inline-style: moved from style prop to Tailwind arbitrary value */}
       <div
         aria-hidden
-        className="absolute inset-0 -z-10"
-        style={{
-          backgroundImage:
-            'radial-gradient(ellipse 60% 50% at 50% 0%, hsl(var(--primary) / 0.14), transparent 65%)',
-        }}
+        className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_60%_50%_at_50%_0%,hsl(var(--primary)/0.14),transparent_65%)]"
       />
       <div className="container py-4 md:py-6">
         <motion.div
@@ -152,7 +149,7 @@ function GameHero() {
 
 function CategoryGrid() {
   return (
-    <section className="container py-6 md:py-8">
+    <section aria-label="Browse categories" className="container py-6 md:py-8">
       <div className="flex items-end justify-between gap-6 flex-wrap mb-8">
         <div>
           <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-primary mb-2">
@@ -208,7 +205,7 @@ function CategoryGrid() {
 
 function TopPicksSection() {
   return (
-    <section className="border-t border-border/40 bg-surface-elevated/20">
+    <section aria-label="Top picks" className="border-t border-border/40 bg-surface-elevated/20">
       <div className="container py-12 md:py-16 space-y-12">
         <TopPicksRow
           tabType="ACCOUNTS"
@@ -292,7 +289,7 @@ function TopPicksRow({
 
 function BrowseTrustStripWrap() {
   return (
-    <section className="container py-10">
+    <section aria-label="Trust & guarantees" className="container py-10">
       <BrowseTrustStrip />
     </section>
   );
@@ -300,7 +297,7 @@ function BrowseTrustStripWrap() {
 
 function CustomRequestBanner() {
   return (
-    <section className="container pb-20">
+    <section aria-label="Post a custom request" className="container pb-20">
       <CustomRequestCTA
         gameSlug="pokemon-go"
         tabType="ACCOUNTS"

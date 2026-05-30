@@ -1,32 +1,24 @@
-import {
-  createCipheriv,
-  createDecipheriv,
-  randomBytes,
-  scryptSync,
-} from 'crypto';
+import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 
 const ALGO = 'aes-256-gcm';
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
 const KEY_BYTES = 32;
-const SCRYPT_SALT = 'getx-pii-v1';
 
 let cachedKey: Buffer | null = null;
 function getKey(): Buffer {
   if (cachedKey) return cachedKey;
   const raw = process.env.PII_ENCRYPTION_KEY;
   if (!raw) {
+    throw new Error('PII_ENCRYPTION_KEY is required to encrypt withdrawal PII.');
+  }
+  const key = Buffer.from(raw, 'hex');
+  if (key.length !== KEY_BYTES) {
     throw new Error(
-      'PII_ENCRYPTION_KEY is required to encrypt withdrawal PII.',
+      `PII_ENCRYPTION_KEY must be a 64-char hex string (32 bytes). Generate: openssl rand -hex 32`,
     );
   }
-  // Accept either a hex 32-byte key directly or derive deterministically via scrypt
-  // so operators can rotate between formats without re-encrypting everything.
-  const direct = Buffer.from(raw, 'hex');
-  cachedKey =
-    direct.length === KEY_BYTES
-      ? direct
-      : scryptSync(raw, SCRYPT_SALT, KEY_BYTES);
+  cachedKey = key;
   return cachedKey;
 }
 

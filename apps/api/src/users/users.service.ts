@@ -26,7 +26,9 @@ const PUBLIC_PROFILE_SELECT = {
   rank: true,
   xp: true,
   createdAt: true,
-  lastSeenAt: true,
+  // RES-MED-011: lastSeenAt dropped — fingerprinting/stalking risk.
+  // isOnline is computed at read-time and never persists exact timestamps
+  lastSeenAt: true, // kept internally for isOnline computation, not returned in API response
 } satisfies Prisma.UserSelect;
 
 type PublicProfileRow = Prisma.UserGetPayload<{
@@ -48,7 +50,10 @@ function withOnline(row: PublicProfileRow): PublicProfile {
   const isOnline =
     row.lastSeenAt !== null &&
     Date.now() - row.lastSeenAt.getTime() < ONLINE_WINDOW_MS;
-  return { ...row, isOnline };
+  // RES-MED-011: strip lastSeenAt from the public response — exact timestamps
+  // enable stalking/fingerprinting. Only expose the computed isOnline boolean.
+  const { lastSeenAt: _omit, ...rest } = row;
+  return { ...rest, isOnline } as PublicProfile;
 }
 
 @Injectable()
@@ -79,10 +84,12 @@ export class UsersService {
      ordered by sellerRating desc so top sellers surface first. */
   async searchSellers(q: string, limit = 12): Promise<PublicProfile[]> {
     const trimmed = q.trim();
-    if (trimmed.length < 2) return [];
+    // RES-MED-033: min 3 chars + isSeller=true filter to reduce scrape surface
+    if (trimmed.length < 3) return [];
     const rows = await this.prisma.user.findMany({
       where: {
         status: 'ACTIVE',
+        isSeller: true,
         OR: [
           { username: { contains: trimmed, mode: 'insensitive' } },
           { name: { contains: trimmed, mode: 'insensitive' } },
@@ -179,9 +186,10 @@ export class UsersService {
     });
     if (!user) return { alreadyOptedOut: true };
     if (!user.emailNotifications) return { alreadyOptedOut: true };
+    // RES-MED-032: flip both flags — CAN-SPAM/GDPR requires all email opt-out
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { emailNotifications: false },
+      data: { emailNotifications: false, marketingOptIn: false },
     });
     return { alreadyOptedOut: false };
   }

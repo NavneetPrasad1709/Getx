@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import {
   Injectable,
   NotFoundException,
@@ -124,11 +125,10 @@ export class CustomRequestsService {
     if (!game) throw new NotFoundException(`Game not found: ${dto.gameSlug}`);
     if (!game.isActive) throw new BadRequestException('Game not available');
 
+    // RES-MED-020: count+1 races under concurrent creates → P2002.
+    // Use random hex suffix for collision resistance.
     const year = new Date().getFullYear();
-    const count = await this.prisma.customRequest.count({
-      where: { requestNumber: { startsWith: `CR-${year}-` } },
-    });
-    const requestNumber = `CR-${year}-${String(count + 1).padStart(5, '0')}`;
+    const requestNumber = `CR-${year}-${randomBytes(4).toString('hex').toUpperCase()}`;
 
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
@@ -249,6 +249,15 @@ export class CustomRequestsService {
     };
   }
 
+  // Statuses visible to unauthenticated callers. Buyers can see their
+  // own cancelled/expired/disputed requests via GET /me/list instead.
+  private static readonly PUBLIC_STATUSES = new Set([
+    'OPEN',
+    'AWAITING_CHOICE',
+    'IN_PROGRESS',
+    'DELIVERED',
+  ]);
+
   async getRequest(
     id: string,
     currentUserId?: string,
@@ -261,6 +270,17 @@ export class CustomRequestsService {
     if (!request) throw new NotFoundException('Request not found');
     if (request.deletedAt) throw new NotFoundException('Request removed');
 
+    // RES-HIGH-016: hide CANCELLED / EXPIRED / DISPUTED from anonymous callers.
+    // Authenticated buyers can still view their own request in any status.
+    const isBuyer = currentUserId && currentUserId === request.buyerId;
+    if (
+      !isBuyer &&
+      !CustomRequestsService.PUBLIC_STATUSES.has(request.status)
+    ) {
+      throw new NotFoundException('Request not found');
+    }
+
+    // RES-HIGH-018: only increment viewCount for non-buyer callers.
     if (currentUserId !== request.buyerId) {
       void this.prisma.customRequest
         .update({

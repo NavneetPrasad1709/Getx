@@ -2,6 +2,9 @@ import type { Metadata } from 'next';
 import dynamic from 'next/dynamic';
 import ReactDOM from 'react-dom';
 import { Header } from '@/components/header';
+
+// WEB-MED-033: single source of truth — canonical and OG URLs derived from env
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://getx.live';
 import { HeroSection } from '@/components/landing/hero-section';
 import { PartnerTrustBand } from '@/components/landing/partner-trust-band';
 import { LandingFooter } from '@/components/landing/landing-footer';
@@ -41,11 +44,11 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'GETX — Get X. Get gaming.',
     description: 'The premium marketplace for gaming services.',
-    url: 'https://getx.live',
+    url: SITE_URL,
     siteName: 'GETX',
     images: [
       {
-        url: 'https://getx.live/og-image.png',
+        url: `${SITE_URL}/og-image.png`,
         width: 1200,
         height: 630,
         alt: 'GETX - Premium Gaming Marketplace',
@@ -59,7 +62,7 @@ export const metadata: Metadata = {
     description: 'The premium marketplace for gaming services.',
   },
   alternates: {
-    canonical: 'https://getx.live',
+    canonical: SITE_URL,
   },
 };
 

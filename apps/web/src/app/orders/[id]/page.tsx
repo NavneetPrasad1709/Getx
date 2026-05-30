@@ -162,6 +162,8 @@ export default function OrderDetailPage() {
   const removeLoyalty = useRemoveLoyalty();
   const [disputeOpen, setDisputeOpen] = useState(false);
   const [rewardOpen, setRewardOpen] = useState(false);
+  // WEB-MED: inline confirm replaces native confirm() for confirm-receipt action
+  const [confirmReceiptOpen, setConfirmReceiptOpen] = useState(false);
   const { data: eligibility, refetch: refetchEligibility } = useReviewEligibility(
     id,
     order?.status === 'COMPLETED',
@@ -209,11 +211,10 @@ export default function OrderDetailPage() {
   };
 
   const handleConfirmReceipt = async () => {
-    if (!confirm('Confirm you received what was promised? This releases payment to seller.'))
-      return;
     try {
       await confirmReceipt.mutateAsync(id);
       toast.success('Receipt confirmed. Thank you!');
+      setConfirmReceiptOpen(false);
     } catch (err) {
       toast.error(extractMessage(err) ?? 'Failed to confirm');
     }
@@ -605,20 +606,57 @@ export default function OrderDetailPage() {
 
             {order.status === 'DELIVERED' && isBuyer ? (
               <section className="surface-cinematic rounded-3xl p-6">
-                <Button
-                  onClick={handleConfirmReceipt}
-                  loading={confirmReceipt.isPending}
-                  loadingText="Confirming…"
-                  variant="success"
-                  size="xl"
-                  className="w-full rounded-full"
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                  Confirm receipt
-                </Button>
-                <p className="mt-3 text-center text-[11px] text-muted-foreground">
-                  Auto-releases in 3 days if no issues
-                </p>
+                {/* WEB-MED: inline confirm replaces native confirm() — escrow release is irreversible */}
+                {confirmReceiptOpen ? (
+                  <div className="rounded-2xl border border-success/30 bg-success/5 p-5 space-y-3">
+                    <div className="flex items-start gap-3">
+                      <CheckCircle2 className="h-5 w-5 text-success shrink-0 mt-0.5" />
+                      <div>
+                        <div className="font-semibold text-[14px]">Confirm you received what was promised?</div>
+                        <div className="text-[12px] text-muted-foreground mt-0.5">
+                          This releases the escrow payment to the seller. The action cannot be undone.
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="flex-1 rounded-full"
+                        onClick={() => setConfirmReceiptOpen(false)}
+                        disabled={confirmReceipt.isPending}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="success"
+                        className="flex-1 rounded-full"
+                        onClick={handleConfirmReceipt}
+                        loading={confirmReceipt.isPending}
+                        loadingText="Confirming…"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        Yes, confirm
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <Button
+                      onClick={() => setConfirmReceiptOpen(true)}
+                      variant="success"
+                      size="xl"
+                      className="w-full rounded-full"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      Confirm receipt
+                    </Button>
+                    <p className="mt-3 text-center text-[11px] text-muted-foreground">
+                      Auto-releases in 3 days if no issues
+                    </p>
+                  </>
+                )}
               </section>
             ) : null}
 

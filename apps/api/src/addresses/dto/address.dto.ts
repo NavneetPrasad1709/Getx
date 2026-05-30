@@ -8,7 +8,8 @@ const baseAddressFields = {
   city: z.string().min(2).max(80),
   state: z.string().min(2).max(80),
   postalCode: z.string().min(3).max(16),
-  country: z.string().min(2).max(2).default('US'),
+  // RES-MED-057: enforce ISO 3166-1 alpha-2 — rejects emoji flags like 🇺🇸 and invalid codes
+  country: z.string().regex(/^[A-Z]{2}$/, 'Must be a 2-letter ISO country code').default('US'),
   label: z.string().max(40).optional().nullable(),
   /* Generic tax ID — India GSTIN (15 chars), EU VAT ID, US EIN, BR
      CPF/CNPJ, etc. We accept 6-40 chars alphanumeric + punctuation;

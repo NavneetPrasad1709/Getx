@@ -6,6 +6,10 @@ import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { RankModule } from '../rank/rank.module';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
+import { OrderEscrowCron } from './order-escrow.cron';
+import { OrderWalletListener } from './listeners/order-wallet.listener';
+import { OrderLoyaltyListener } from './listeners/order-loyalty.listener';
+import { OrderRankListener } from './listeners/order-rank.listener';
 
 @Module({
   imports: [
@@ -16,7 +20,14 @@ import { OrdersService } from './orders.service';
     RankModule,
   ],
   controllers: [OrdersController],
-  providers: [OrdersService],
+  providers: [
+    OrdersService,
+    OrderEscrowCron,
+    // Domain event listeners — each handles one side-effect of order completion.
+    OrderWalletListener,
+    OrderLoyaltyListener,
+    OrderRankListener,
+  ],
   exports: [OrdersService],
 })
 export class OrdersModule {}

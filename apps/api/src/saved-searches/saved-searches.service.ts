@@ -64,9 +64,11 @@ export class SavedSearchesService {
   }
 
   async listMine(userId: string): Promise<SavedSearch[]> {
+    // RES-HIGH-017: cap to prevent unbounded scan
     return this.prisma.savedSearch.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
+      take: 100,
     });
   }
 
@@ -115,46 +117,54 @@ export class SavedSearchesService {
      whole cron run down. */
   @Cron(CronExpression.EVERY_4_HOURS, { name: 'savedSearchAlerts' })
   async runAlerts(): Promise<{ checked: number; notified: number }> {
-    // Bounded scan — at 20 lakh users we may exceed this; switch to cursor
-    // pagination if `notified` ever clips at the cap (logged below).
-    const SCAN_CAP = 1000;
-    const candidates = await this.prisma.savedSearch.findMany({
-      where: {
-        emailAlerts: true,
-        user: {
-          status: 'ACTIVE',
-          emailNotifications: true,
-        },
-      },
-      include: {
-        user: {
-          select: { id: true, email: true, name: true, unsubscribeToken: true },
-        },
-      },
-      take: SCAN_CAP,
-    });
-    if (candidates.length === SCAN_CAP) {
-      this.logger.warn(
-        `savedSearch alerts hit SCAN_CAP=${SCAN_CAP} — cursor pagination required`,
-      );
-    }
-
+    // RES-MED-055 + HIGH-019: cursor pagination so the cron can process
+    // >1000 saved searches without silently dropping alerts; concurrent
+    // chunks of 10 so the cron finishes well within the 4-hour window.
+    const PAGE_SIZE = 200;
+    const CHUNK_SIZE = 10;
+    let cursor: string | undefined;
+    let checked = 0;
     let notified = 0;
-    for (const row of candidates) {
-      try {
-        const sent = await this.processOne(row);
-        if (sent) notified += 1;
-      } catch (err) {
-        this.logger.warn(
-          `savedSearch alert failed for id=${row.id}: ${(err as Error).message}`,
+
+    while (true) {
+      const candidates = await this.prisma.savedSearch.findMany({
+        where: {
+          emailAlerts: true,
+          user: { status: 'ACTIVE', emailNotifications: true },
+        },
+        include: {
+          user: {
+            select: { id: true, email: true, name: true, unsubscribeToken: true },
+          },
+        },
+        take: PAGE_SIZE,
+        ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+        orderBy: { id: 'asc' },
+      });
+
+      if (candidates.length === 0) break;
+      cursor = candidates[candidates.length - 1].id;
+      checked += candidates.length;
+
+      // RES-HIGH-019: process in chunks of CHUNK_SIZE concurrently
+      for (let i = 0; i < candidates.length; i += CHUNK_SIZE) {
+        const chunk = candidates.slice(i, i + CHUNK_SIZE);
+        const results = await Promise.allSettled(
+          chunk.map((row) => this.processOne(row)),
         );
+        for (const r of results) {
+          if (r.status === 'fulfilled' && r.value) notified += 1;
+          if (r.status === 'rejected') {
+            this.logger.warn(`savedSearch alert failed: ${(r.reason as Error)?.message}`);
+          }
+        }
       }
+
+      if (candidates.length < PAGE_SIZE) break;
     }
 
-    this.logger.log(
-      `savedSearch alerts run · checked=${candidates.length} notified=${notified}`,
-    );
-    return { checked: candidates.length, notified };
+    this.logger.log(`savedSearch alerts run · checked=${checked} notified=${notified}`);
+    return { checked, notified };
   }
 
   private async processOne(
@@ -194,7 +204,10 @@ export class SavedSearchesService {
       to: row.user.email,
       userName: row.user.name ?? null,
       savedSearchName: row.name,
-      matches: newMatches.slice(0, MATCH_PREVIEW_COUNT),
+      matches: newMatches.slice(0, MATCH_PREVIEW_COUNT).map((m) => ({
+        ...m,
+        price: m.price.toNumber(),
+      })),
       totalMatches: newMatches.length,
       viewAllUrl: this.buildViewAllUrl(row),
       unsubscribeUrl: await this.users.unsubscribeUrlFor(

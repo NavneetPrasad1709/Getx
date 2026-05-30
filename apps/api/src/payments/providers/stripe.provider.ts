@@ -35,6 +35,7 @@ interface StripeWebhookObject {
 }
 
 interface StripeWebhookEvent {
+  id?: string; // globally unique per Stripe delivery — use for refund idempotency
   type?: string;
   data?: { object?: StripeWebhookObject };
 }
@@ -214,9 +215,14 @@ export class StripePaymentProvider implements PaymentProvider {
           type = 'unknown';
       }
 
+      // PAY-CRIT-002: for refund events use the Stripe event id (globally
+      // unique per delivery) instead of obj.id (charge id) — multiple partial
+      // refunds share the same charge id and would collide on the unique index.
       const externalId =
         type === 'checkout.completed' && obj.client_reference_id
           ? obj.client_reference_id
+          : type === 'refund.completed'
+          ? (event.id ?? obj.id ?? '')
           : (obj.id ?? '');
 
       const taxMinor = obj.total_details?.amount_tax;

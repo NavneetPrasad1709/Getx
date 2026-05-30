@@ -29,9 +29,9 @@ const nextConfig = {
       { protocol: 'https', hostname: 'videos.pexels.com' },
     ],
     formats: ['image/avif', 'image/webp'],
-    // We ship our own SVG illustrations from /public — locally authored, no user upload path.
-    // Combined with CSP below for defense-in-depth.
-    dangerouslyAllowSVG: true,
+    // WEB-HIGH-004: dangerouslyAllowSVG disabled — R2 remote patterns include
+    // user-uploaded buckets; a malicious SVG with <script> becomes XSS
+    dangerouslyAllowSVG: false,
     contentDispositionType: 'attachment',
     contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
   },
@@ -63,12 +63,22 @@ const nextConfig = {
       "object-src 'none'",
       "frame-ancestors 'none'",
       "form-action 'self'",
-      "img-src 'self' data: blob: https://*.r2.dev https://*.r2.cloudflarestorage.com https://cdn.getx.live https://r2.getx.live https://images.pexels.com https://videos.pexels.com",
+      "img-src 'self' data: blob: https://*.r2.dev https://*.r2.cloudflarestorage.com https://cdn.getx.live https://r2.getx.live https://images.pexels.com https://videos.pexels.com https://image.crisp.chat",
       "media-src 'self' data: blob: https://*.r2.dev https://*.r2.cloudflarestorage.com https://cdn.getx.live",
       "font-src 'self' data:",
       "style-src 'self' 'unsafe-inline'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://va.vercel-scripts.com https://vercel.live",
-      "connect-src 'self' wss://api.getx.live https://api.getx.live https://vitals.vercel-insights.com https://vercel.live",
+      // WEB-HIGH-001: drop 'unsafe-eval' — framer-motion 11+ no longer needs eval
+      // WEB-HIGH-003: add Crisp chat CDN
+      "script-src 'self' 'unsafe-inline' https://va.vercel-scripts.com https://vercel.live https://client.crisp.chat",
+      // WEB-HIGH-002: removed hardcoded Railway preview host (leaks infra + breaks on redeploy)
+      // WEB-HIGH-003: Crisp websocket
+      "connect-src 'self' wss://api.getx.live https://api.getx.live https://vitals.vercel-insights.com https://vercel.live wss://client.relay.crisp.chat https://client.crisp.chat",
+      // WEB-HIGH-003: Crisp widget frame
+      "frame-src https://game.crisp.chat",
+      // WEB-MED-046: restrict workers to same-origin blobs only
+      "worker-src 'self' blob:",
+      "manifest-src 'self'",
+      "child-src 'none'",
       'upgrade-insecure-requests',
     ].join('; ');
 

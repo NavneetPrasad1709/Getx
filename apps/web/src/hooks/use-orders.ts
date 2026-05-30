@@ -139,10 +139,12 @@ export function useOrder(id: string) {
       return data;
     },
     enabled: !!id,
+    // WEB-LOW-023: 6s is enough; 3s burned battery on idle tabs with no Stripe event yet
     refetchInterval: (q) => {
       const status = q.state.data?.status;
-      return status === 'PENDING' ? 3000 : false;
+      return status === 'PENDING' ? 6000 : false;
     },
+    refetchIntervalInBackground: false,
   });
 }
 

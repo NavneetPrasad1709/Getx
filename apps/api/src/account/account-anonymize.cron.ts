@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { withCronLock } from '../common/cron-lock';
 
 /**
  * Daily anonymisation sweep — closes the GDPR Art 17 / DPDP §12 loop
@@ -34,7 +35,12 @@ export class AccountAnonymizeCron {
      per run; anything beyond rolls into the next tick so a backlog
      after a long Postgres outage doesn't lock the cron worker. */
   @Cron(CronExpression.EVERY_DAY_AT_3AM, { name: 'accountAnonymize' })
-  async run(): Promise<{ scanned: number; anonymised: number }> {
+  async run(): Promise<{ scanned: number; anonymised: number } | undefined> {
+    // GDPR anonymisation is irreversible — exactly one replica runs it.
+    return withCronLock('accountAnonymize', 10 * 60 * 1000, () => this.runSweep());
+  }
+
+  private async runSweep(): Promise<{ scanned: number; anonymised: number }> {
     const cutoff = new Date(
       Date.now() - GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000,
     );
@@ -122,14 +128,9 @@ export class AccountAnonymizeCron {
           kycStatus: 'NONE',
           kycProvider: null,
           kycRejectionReason: null,
-          /* Payout rails — bank/UPI/PayPal/Wise/Stripe Connect. The
-             encrypted bank blob can't be decrypted once cleared, and
-             the Stripe Connect link is torn down separately by the
-             admin workflow. */
-          upiId: null,
-          bankAccountEncrypted: null,
-          paypalEmail: null,
-          wiseEmail: null,
+          /* Payout rails — Stripe Connect torn down separately by admin.
+             upiId/bank/PayPal/Wise/twoFactorSecret now live in UserPii;
+             wiped below in the tx.userPii.deleteMany call. */
           stripeConnectAccountId: null,
           stripeConnectChargesEnabled: false,
           stripeConnectPayoutsEnabled: false,
@@ -145,7 +146,7 @@ export class AccountAnonymizeCron {
           failedLoginCount: 0,
           lockedUntil: null,
           twoFactorEnabled: false,
-          twoFactorSecret: null,
+          // twoFactorSecret lives in UserPii — wiped below
           unsubscribeToken: null,
           /* Notification prefs — opt the row out of every channel so
              a future cron that resurrects this row by mistake can't
@@ -171,6 +172,11 @@ export class AccountAnonymizeCron {
           reviewNotes: null,
         },
       });
+
+      /* UserPii — payout rails + 2FA secret (DB-031 PII split).
+         Delete the entire row; cascades from User if the cron somehow
+         runs after the User row is hard-deleted. */
+      await tx.userPii.deleteMany({ where: { userId } });
 
       /* Addresses + payment methods — full delete is safe because
          these don't have financial-row foreign keys; they cascade

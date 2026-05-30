@@ -1,6 +1,7 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, ForbiddenException, Get, Headers } from '@nestjs/common';
 import { Public } from '../auth/decorators/public.decorator';
 import { PrismaService } from '../prisma/prisma.service';
+import { ConfigService } from '@nestjs/config';
 
 interface DeepCheckEntry {
   status: 'ok' | 'warning' | 'error';
@@ -9,7 +10,10 @@ interface DeepCheckEntry {
 
 @Controller('health')
 export class HealthController {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private config: ConfigService,
+  ) {}
 
   @Public()
   @Get()
@@ -40,9 +44,14 @@ export class HealthController {
     };
   }
 
+  // RES-MED-040: gate deep health behind a token — exposes process memory/uptime
   @Public()
   @Get('deep')
-  async deepCheck() {
+  async deepCheck(@Headers('x-health-token') token: string | undefined) {
+    const expected = this.config.get<string>('HEALTH_TOKEN');
+    if (expected && token !== expected) {
+      throw new ForbiddenException();
+    }
     const checks: Record<string, DeepCheckEntry> = {};
 
     const dbStart = Date.now();

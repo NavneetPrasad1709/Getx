@@ -12,6 +12,7 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import type { Address } from '@getx/database';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { RequireOwnership } from '../auth/decorators/require-ownership.decorator';
 import { AddressesService } from './addresses.service';
 import { CreateAddressSchema, UpdateAddressSchema } from './dto/address.dto';
 
@@ -36,6 +37,7 @@ export class AddressesController {
   }
 
   @Patch(':id')
+  @RequireOwnership('address')
   update(
     @CurrentUser('id') userId: string,
     @Param('id') id: string,
@@ -46,6 +48,7 @@ export class AddressesController {
   }
 
   @Delete(':id')
+  @RequireOwnership('address')
   @HttpCode(HttpStatus.OK)
   remove(
     @CurrentUser('id') userId: string,

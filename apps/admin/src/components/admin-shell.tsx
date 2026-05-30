@@ -16,6 +16,7 @@ import {
   ScrollText,
   Search,
   ShieldAlert,
+  ShieldCheck,
   Star,
   Tag,
   UserRound,
@@ -24,7 +25,7 @@ import {
 } from 'lucide-react';
 import { Badge, Button, ThemeToggle, motion } from '@getx/ui';
 import { useAuth } from '@/hooks/use-auth';
-import { useAdminAlerts } from '@/hooks/use-admin';
+import { useAdminAlertsCounts } from '@/hooks/use-admin';
 
 /* GETX Admin Shell.
    ─────────────────────────────────────────────────────────────────────
@@ -68,14 +69,17 @@ const NAV_SECTIONS: NavSection[] = [
   },
   {
     label: 'System',
-    items: [{ href: '/audit-logs', label: 'Audit logs', icon: ScrollText }],
+    items: [
+      { href: '/audit-logs', label: 'Audit logs', icon: ScrollText },
+      { href: '/security', label: 'Security', icon: ShieldCheck },
+    ],
   },
 ];
 
 export function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { user, logout, loading } = useAuth();
-  const { counts } = useAdminAlerts();
+  const { data: counts } = useAdminAlertsCounts();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const isActive = (href: string, exact = false) =>
@@ -97,8 +101,9 @@ export function AdminShell({ children }: { children: ReactNode }) {
   if (loading) return <div className="min-h-screen" />;
 
   const initials = (user?.name ?? user?.email ?? 'A').slice(0, 2).toUpperCase();
-  const totalAlerts =
-    counts.disputes + counts.pendingListings + counts.removedListings + counts.hiddenReviews;
+  const totalAlerts = counts
+    ? counts.disputes + counts.pendingListings + counts.removedListings + counts.hiddenReviews
+    : 0;
 
   return (
     <div className="min-h-screen flex bg-background">
@@ -138,7 +143,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
                     key={item.href}
                     item={item}
                     active={isActive(item.href, item.exact)}
-                    alertCount={item.alertKey ? counts[item.alertKey] : 0}
+                    alertCount={item.alertKey ? (counts?.[item.alertKey] ?? 0) : 0}
                   />
                 ))}
               </div>
@@ -249,7 +254,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
                   {section.items.map((item, iIdx) => {
                     const Icon = item.icon;
                     const active = isActive(item.href, item.exact);
-                    const alertCount = item.alertKey ? counts[item.alertKey] : 0;
+                    const alertCount = item.alertKey ? (counts?.[item.alertKey] ?? 0) : 0;
                     const delay = (sIdx * 2 + iIdx) * 0.04;
                     return (
                       <motion.div

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import {
@@ -12,6 +12,8 @@ import {
 } from '@nestjs/websockets';
 import { parse as parseCookie } from 'cookie';
 import { Server, Socket } from 'socket.io';
+import { createAdapter } from '@socket.io/redis-adapter';
+import { getRedisClient } from '../common/redis.factory';
 import { ConversationsService, type MessageRow } from './conversations.service';
 import { SendMessageSchema } from './dto/send-message.dto';
 import {
@@ -19,6 +21,7 @@ import {
   type SocketRateLimitEvent,
 } from './socket-rate-limiter';
 import { parseOriginList } from '../common/config-helpers';
+import { PrismaService } from '../prisma/prisma.service';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -51,9 +54,11 @@ const WS_ALLOWED_ORIGINS = [
       origin: string | undefined,
       cb: (err: Error | null, allowed?: boolean) => void,
     ) => {
-      // No-origin requests (curl, server-to-server, mobile webviews) bypass
-      // the CORS check — browser clients always send Origin.
-      if (!origin) return cb(null, true);
+      // APPSEC-003: browser clients always send Origin. A no-Origin handshake
+      // is curl / server-to-server / native — allowed only outside production
+      // so local tooling still works, but rejected in prod where it would be
+      // an unchecked bypass of the allowlist.
+      if (!origin) return cb(null, process.env.NODE_ENV !== 'production');
       if (WS_ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
       return cb(new Error(`Origin not allowed: ${origin}`));
     },
@@ -61,11 +66,15 @@ const WS_ALLOWED_ORIGINS = [
   },
   namespace: '/chat',
 })
-export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, OnModuleInit {
   @WebSocketServer()
   server!: Server;
 
   private readonly logger = new Logger(ChatGateway.name);
+  // In-memory map tracks sockets on THIS replica only. With the Redis adapter
+  // installed, broadcastToConversation / broadcastToUser use server.to() which
+  // the adapter fans out to all replicas automatically, so cross-pod delivery
+  // works even though this Map is local.
   private userSockets = new Map<string, Set<string>>();
 
   constructor(
@@ -73,7 +82,26 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private config: ConfigService,
     private convs: ConversationsService,
     private rateLimiter: SocketRateLimiter,
+    private prisma: PrismaService,
   ) {}
+
+  onModuleInit() {
+    const redis = getRedisClient();
+    if (!redis) {
+      this.logger.warn(
+        'REDIS_URL not set — Socket.io running in single-replica mode. ' +
+        'Chat events will NOT reach clients on other API instances. ' +
+        'Set REDIS_URL to enable the Redis adapter for horizontal scaling.',
+      );
+      return;
+    }
+
+    // Each adapter needs its own client (pub + sub cannot share one connection).
+    const pubClient = redis;
+    const subClient = redis.duplicate();
+    this.server.adapter(createAdapter(pubClient, subClient));
+    this.logger.log('Socket.io Redis adapter enabled — cross-replica chat active');
+  }
 
   async handleConnection(client: AuthenticatedSocket) {
     try {
@@ -91,10 +119,28 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         return;
       }
 
+      // Accept either the short-lived WS ticket (aud: getx-ws, AUTH-011) or a
+      // raw access-token cookie (aud: getx-api) for the Chrome/Firefox path
+      // where same-site cookies still flow on the upgrade. Enforcing issuer +
+      // algorithm here closes the door on tokens minted for any other purpose.
       const secret = this.config.get<string>('JWT_ACCESS_SECRET');
       const payload = await this.jwt.verifyAsync<{ sub: string }>(token, {
         secret,
+        algorithms: ['HS256'],
+        issuer: 'getx.live',
+        audience: ['getx-api', 'getx-ws'],
       });
+
+      // RES-HIGH-008: reject banned/suspended users immediately — without this
+      // they keep 15-min chat capability after a ban
+      const user = await this.prisma.user.findUnique({
+        where: { id: payload.sub },
+        select: { status: true },
+      });
+      if (!user || user.status !== 'ACTIVE') {
+        client.disconnect();
+        return;
+      }
 
       client.userId = payload.sub;
 
@@ -103,15 +149,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       sockets.add(client.id);
       this.userSockets.set(payload.sub, sockets);
 
-      /* Auto-join a per-user room so the server can push lifecycle
-         events (`order:paid`, `order:delivered`, `dispute:opened`, …)
-         to every device the user has open without addressing each
-         socket id individually. The room name is the user id so any
-         service can broadcast via `broadcastToUser(userId, event, data)`. */
       await client.join(`user:${payload.sub}`);
 
-      /* Broadcast `online` only on the first socket per user — additional
-         tabs from the same user don't re-fire the event. */
       if (!wasOnline) {
         this.emitPresence(payload.sub, true);
       }
@@ -138,29 +177,62 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.log(`Socket disconnected: user=${client.userId}`);
   }
 
-  /* Presence broadcast — emits `presence:user:${id}` so anyone subscribed
-     to that specific user gets a flip event without flooding the whole
-     namespace with every user's transitions. Frontend hooks subscribe
-     using socket.on(`presence:user:${id}`). */
+  // RES-CRIT-007: emit only to the opt-in subscription room — the old
+  // this.server.emit() sent every user's presence to every connected socket
+  // (O(n²) fanout + privacy leak of online/offline timestamps)
   private emitPresence(userId: string, isOnline: boolean): void {
-    const event = `presence:user:${userId}`;
-    this.server.emit(event, {
+    this.server.to(`presence-watch:${userId}`).emit(`presence:user:${userId}`, {
       userId,
       isOnline,
       at: new Date().toISOString(),
     });
   }
 
+  // Client calls watch_presence to opt into a specific user's presence events
+  @SubscribeMessage('watch_presence')
+  async handleWatchPresence(
+    @MessageBody() data: { userId: string },
+    @ConnectedSocket() client: AuthenticatedSocket,
+  ) {
+    if (!client.userId || !data?.userId) return;
+    await client.join(`presence-watch:${data.userId}`);
+    return { success: true };
+  }
+
+  @SubscribeMessage('unwatch_presence')
+  async handleUnwatchPresence(
+    @MessageBody() data: { userId: string },
+    @ConnectedSocket() client: AuthenticatedSocket,
+  ) {
+    if (!client.userId || !data?.userId) return;
+    await client.leave(`presence-watch:${data.userId}`);
+    return { success: true };
+  }
+
+  /**
+   * Forcefully disconnect all sockets for a user (called on ban).
+   * RES-CRIT-024 / RES-HIGH-008
+   */
+  disconnectUser(userId: string): void {
+    const sockets = this.userSockets.get(userId);
+    if (!sockets) return;
+    for (const socketId of sockets) {
+      const socket = this.server.sockets.sockets.get(socketId);
+      if (socket) socket.disconnect(true);
+    }
+    this.userSockets.delete(userId);
+  }
+
   /**
    * Centralised rate-limit gate. Emits a `rate_limit_exceeded` event back to
    * the client (so the UI can debounce or warn) and returns false if blocked.
    */
-  private rateLimitOk(
+  private async rateLimitOk(
     client: AuthenticatedSocket,
     event: SocketRateLimitEvent,
-  ): boolean {
+  ): Promise<boolean> {
     if (!client.userId) return false;
-    const result = this.rateLimiter.consume(client.userId, event);
+    const result = await this.rateLimiter.consume(client.userId, event);
     if (!result.allowed) {
       client.emit('rate_limit_exceeded', {
         event,
@@ -178,7 +250,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     if (!client.userId) return { error: 'Not authenticated' };
     if (!data?.conversationId) return { error: 'conversationId required' };
-    if (!this.rateLimitOk(client, 'join_conversation')) {
+    if (!(await this.rateLimitOk(client, 'join_conversation'))) {
       return { error: 'Rate limit exceeded' };
     }
 
@@ -199,7 +271,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     if (!client.userId) return { error: 'Not authenticated' };
     if (!data?.conversationId) return { error: 'conversationId required' };
-    if (!this.rateLimitOk(client, 'leave_conversation')) {
+    if (!(await this.rateLimitOk(client, 'leave_conversation'))) {
       return { error: 'Rate limit exceeded' };
     }
     await client.leave(`conv:${data.conversationId}`);
@@ -218,7 +290,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       }
   > {
     if (!client.userId) return { error: 'Not authenticated' };
-    if (!this.rateLimitOk(client, 'send_message')) {
+    if (!(await this.rateLimitOk(client, 'send_message'))) {
       return { error: 'Rate limit exceeded. Slow down.' };
     }
 
@@ -264,7 +336,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     if (!client.userId) return;
     if (!data?.conversationId || typeof data.isTyping !== 'boolean') return;
-    if (!this.rateLimitOk(client, 'typing')) return;
+    if (!(await this.rateLimitOk(client, 'typing'))) return;
 
     // Participant gate prevents typing-event spoofing into others' rooms.
     const allowed = await this.convs.isParticipant(
@@ -286,7 +358,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     if (!client.userId) return;
     if (!data?.conversationId) return;
-    if (!this.rateLimitOk(client, 'mark_read')) return;
+    if (!(await this.rateLimitOk(client, 'mark_read'))) return;
 
     try {
       // markAsRead runs its own participant check; if it throws we never

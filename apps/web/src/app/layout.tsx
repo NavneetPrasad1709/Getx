@@ -60,11 +60,12 @@ const organizationJsonLd = {
   '@type': 'Organization',
   name: 'GETX',
   url: SITE_URL,
-  logo: `${SITE_URL}/logo.png`,
+  // WEB-LOW-032: /logo.png doesn't exist — use the actual icon; socials from env
+  logo: `${SITE_URL}/icon.webp`,
   sameAs: [
-    'https://twitter.com/getxgg',
-    'https://discord.gg/getx',
-  ],
+    process.env.NEXT_PUBLIC_TWITTER_URL ?? 'https://twitter.com/getxgg',
+    process.env.NEXT_PUBLIC_DISCORD_URL ?? 'https://discord.gg/getx',
+  ].filter(Boolean),
   description:
     'The premium gaming marketplace. Verified sellers, escrow-protected orders, sub-10-minute delivery.',
 };

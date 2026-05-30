@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
-import { AxiosError } from 'axios';
+import { AlertTriangle, Ban, ShieldAlert } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -16,6 +16,7 @@ import {
 } from '@getx/ui';
 import { AdminShell } from '@/components/admin-shell';
 import { useAdminUser, useBanUser, useUnbanUser } from '@/hooks/use-admin';
+import { extractMessage } from '@/lib/api-error';
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -37,14 +38,6 @@ function MetricCard({ label, value }: { label: string; value: React.ReactNode })
   );
 }
 
-function extractMessage(err: unknown): string | null {
-  if (err instanceof AxiosError) {
-    const data = err.response?.data as { message?: string } | undefined;
-    return data?.message ?? null;
-  }
-  return null;
-}
-
 export default function AdminUserDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
@@ -53,6 +46,8 @@ export default function AdminUserDetailPage() {
   const unbanMutation = useUnbanUser();
   const [banReason, setBanReason] = useState('');
   const [showBanForm, setShowBanForm] = useState(false);
+  // SAP-006: inline confirm replaces native confirm() dialog
+  const [showUnbanConfirm, setShowUnbanConfirm] = useState(false);
 
   const handleBan = async () => {
     if (banReason.length < 5) {
@@ -71,10 +66,10 @@ export default function AdminUserDetailPage() {
   };
 
   const handleUnban = async () => {
-    if (!confirm('Unban this user?')) return;
     try {
       await unbanMutation.mutateAsync(id);
       toast.success('User unbanned');
+      setShowUnbanConfirm(false);
       void refetch();
     } catch (err) {
       toast.error(extractMessage(err) ?? 'Unban failed');
@@ -103,6 +98,8 @@ export default function AdminUserDetailPage() {
   }
 
   const isAdmin = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+  const isBanned = user.status === 'BANNED';
+  const isSuspended = user.status === 'SUSPENDED';
 
   return (
     <AdminShell>
@@ -111,6 +108,37 @@ export default function AdminUserDetailPage() {
           {user.username ?? user.name ?? 'User'}
         </h1>
         <p className="text-muted-foreground mb-6">{user.email}</p>
+
+        {/* SAP-011: status banner for BANNED / SUSPENDED accounts */}
+        {isBanned && (
+          <div className="flex items-start gap-3 rounded-xl bg-error/10 ring-1 ring-error/30 px-4 py-3 mb-6">
+            <Ban className="h-5 w-5 text-error mt-0.5 shrink-0" strokeWidth={2} />
+            <div>
+              <div className="font-semibold text-[14px] text-error">Account banned</div>
+              {user.banReason && (
+                <div className="text-[12.5px] text-error/80 mt-0.5">{user.banReason}</div>
+              )}
+              {user.bannedAt && (
+                <div className="text-[11px] text-muted-foreground mt-0.5">
+                  Since {new Date(user.bannedAt).toLocaleString()}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        {isSuspended && (
+          <div className="flex items-start gap-3 rounded-xl bg-warning/10 ring-1 ring-warning/30 px-4 py-3 mb-6">
+            <ShieldAlert className="h-5 w-5 text-warning mt-0.5 shrink-0" strokeWidth={2} />
+            <div>
+              <div className="font-semibold text-[14px] text-warning">Account suspended</div>
+              {user.suspendedUntil && (
+                <div className="text-[12.5px] text-warning/80 mt-0.5">
+                  Until {new Date(user.suspendedUntil).toLocaleString()}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
           <MetricCard label="Buyer Orders" value={user._count?.buyerOrders ?? 0} />
@@ -159,9 +187,27 @@ export default function AdminUserDetailPage() {
             {isAdmin ? (
               <p className="text-sm text-muted-foreground">Cannot ban another admin.</p>
             ) : user.status === 'BANNED' ? (
-              <Button onClick={handleUnban} disabled={unbanMutation.isPending}>
-                {unbanMutation.isPending ? 'Unbanning…' : 'Unban User'}
-              </Button>
+              // SAP-006: inline confirm replaces native confirm() dialog
+              showUnbanConfirm ? (
+                <div className="rounded-xl bg-warning/10 ring-1 ring-warning/30 p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-warning shrink-0" />
+                    <span className="text-sm font-semibold">Confirm unban this user?</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setShowUnbanConfirm(false)}>
+                      Cancel
+                    </Button>
+                    <Button size="sm" onClick={handleUnban} disabled={unbanMutation.isPending}>
+                      {unbanMutation.isPending ? 'Unbanning…' : 'Yes, unban'}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button variant="outline" onClick={() => setShowUnbanConfirm(true)}>
+                  Unban User
+                </Button>
+              )
             ) : showBanForm ? (
               <div className="space-y-3">
                 <Input

@@ -7,6 +7,11 @@ export type OAuthProfileNormalized = {
   provider: 'google' | 'discord';
   providerId: string;
   email: string;
+  // AUTH-004: whether the PROVIDER asserts this email is verified. Only a
+  // verified email may be auto-linked to / pre-verify an existing account,
+  // otherwise an attacker who controls an unverified-email provider account
+  // could take over a GETX account that shares that address.
+  emailVerified: boolean;
   name: string | null;
   avatar: string | null;
   accessToken: string;
@@ -70,10 +75,18 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
       return;
     }
 
+    // Google asserts email verification via the id_token's `email_verified`
+    // claim, surfaced on `_json`. Treat anything other than an explicit true
+    // as unverified (fail closed).
+    const emailVerified =
+      (profile._json as { email_verified?: boolean } | undefined)
+        ?.email_verified === true;
+
     const normalized: OAuthProfileNormalized = {
       provider: 'google',
       providerId: profile.id,
       email: email.toLowerCase(),
+      emailVerified,
       name:
         profile.displayName ||
         [profile.name?.givenName, profile.name?.familyName]

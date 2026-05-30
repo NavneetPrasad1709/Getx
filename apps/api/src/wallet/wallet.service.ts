@@ -5,6 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
 import type { Prisma, WalletTransaction } from '@getx/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -70,11 +71,11 @@ export class WalletService {
     ]);
     if (!user) throw new NotFoundException();
     return {
-      balance: user.buyerWallet,
-      pendingEarnings: user.pendingEarnings,
-      sellerWallet: user.sellerWallet,
-      totalEarned: user.totalEarned,
-      totalSpent: user.totalSpent,
+      balance: user.buyerWallet.toNumber(),
+      pendingEarnings: user.pendingEarnings.toNumber(),
+      sellerWallet: user.sellerWallet.toNumber(),
+      totalEarned: user.totalEarned.toNumber(),
+      totalSpent: user.totalSpent.toNumber(),
       ledger,
     };
   }
@@ -112,7 +113,7 @@ export class WalletService {
           'Wallet credit can only be applied before payment',
         );
       }
-      if ((order.walletApplied ?? 0) > 0) {
+      if (order.walletApplied.toNumber() > 0) {
         throw new BadRequestException(
           'Wallet credit already applied — remove it first',
         );
@@ -131,8 +132,8 @@ export class WalletService {
       });
       if (!user) throw new NotFoundException();
 
-      const cap = order.buyerTotal * MAX_WALLET_APPLY_PCT;
-      const maxApplicable = Math.min(user.buyerWallet, cap);
+      const cap = order.buyerTotal.toNumber() * MAX_WALLET_APPLY_PCT;
+      const maxApplicable = Math.min(user.buyerWallet.toNumber(), cap);
       const applied = Math.min(dto.amount, maxApplicable);
       if (applied <= 0) {
         throw new BadRequestException(
@@ -140,12 +141,19 @@ export class WalletService {
         );
       }
 
-      const newBalance = user.buyerWallet - applied;
-
       await tx.user.update({
         where: { id: userId },
         data: { buyerWallet: { decrement: applied } },
       });
+
+      // PAY-HIGH-019: re-read AFTER the atomic decrement so balances reflect
+      // our specific write, not a stale pre-read that concurrent ops share
+      const postUpdate = await tx.user.findUnique({
+        where: { id: userId },
+        select: { buyerWallet: true },
+      });
+      const actualAfter = postUpdate?.buyerWallet.toNumber() ?? (user.buyerWallet.toNumber() - applied);
+      const actualBefore = actualAfter + applied;
 
       await tx.order.update({
         where: { id: order.id },
@@ -159,8 +167,8 @@ export class WalletService {
           amount: -applied,
           currency: order.currency,
           orderId: order.id,
-          balanceBefore: user.buyerWallet,
-          balanceAfter: newBalance,
+          balanceBefore: actualBefore,
+          balanceAfter: actualAfter,
           description: `GETX Coins applied to order ${order.orderNumber}`,
           metadata: { orderNumber: order.orderNumber },
         },
@@ -168,8 +176,8 @@ export class WalletService {
 
       return {
         walletApplied: applied,
-        newBalance,
-        chargeable: Math.max(0, order.buyerTotal - applied),
+        newBalance: actualAfter,
+        chargeable: Math.max(0, order.buyerTotal.toNumber() - applied),
       };
     });
   }
@@ -190,7 +198,7 @@ export class WalletService {
         orderNumber: true,
       },
     });
-    if (!order || !order.walletApplied || order.walletApplied <= 0) return;
+    if (!order || !order.walletApplied || order.walletApplied.toNumber() <= 0) return;
 
     const user = await tx.user.findUnique({
       where: { id: order.buyerId },
@@ -198,11 +206,17 @@ export class WalletService {
     });
     if (!user) return;
 
-    const newBalance = user.buyerWallet + order.walletApplied;
     await tx.user.update({
       where: { id: order.buyerId },
       data: { buyerWallet: { increment: order.walletApplied } },
     });
+    // PAY-HIGH-019: read balance AFTER increment for accurate ledger
+    const postRefund = await tx.user.findUnique({
+      where: { id: order.buyerId },
+      select: { buyerWallet: true },
+    });
+    const refundAfter = postRefund?.buyerWallet.toNumber() ?? (user.buyerWallet.toNumber() + order.walletApplied.toNumber());
+    const refundBefore = refundAfter - order.walletApplied.toNumber();
     await tx.walletTransaction.create({
       data: {
         userId: order.buyerId,
@@ -210,8 +224,8 @@ export class WalletService {
         amount: order.walletApplied,
         currency: order.currency,
         orderId: order.id,
-        balanceBefore: user.buyerWallet,
-        balanceAfter: newBalance,
+        balanceBefore: refundBefore,
+        balanceAfter: refundAfter,
         description: `Refund of wallet credit on cancelled order ${order.orderNumber}`,
       },
     });
@@ -246,7 +260,6 @@ export class WalletService {
     const cashback = Math.floor(params.buyerTotal * rate * 100) / 100;
     if (cashback <= 0) return 0;
 
-    const newBalance = buyer.buyerWallet + cashback;
     await tx.user.update({
       where: { id: params.buyerId },
       data: {
@@ -254,6 +267,13 @@ export class WalletService {
         totalSpent: { increment: params.buyerTotal },
       },
     });
+    // PAY-HIGH-019: read balance AFTER increment for accurate ledger
+    const postCashback = await tx.user.findUnique({
+      where: { id: params.buyerId },
+      select: { buyerWallet: true },
+    });
+    const cashbackAfter = postCashback?.buyerWallet.toNumber() ?? (buyer.buyerWallet.toNumber() + cashback);
+    const cashbackBefore = cashbackAfter - cashback;
     await tx.walletTransaction.create({
       data: {
         userId: params.buyerId,
@@ -261,8 +281,8 @@ export class WalletService {
         amount: cashback,
         currency: params.currency,
         orderId: params.orderId,
-        balanceBefore: buyer.buyerWallet,
-        balanceAfter: newBalance,
+        balanceBefore: cashbackBefore,
+        balanceAfter: cashbackAfter,
         description: `${(rate * 100).toFixed(rate === 0.015 || rate === 0.025 ? 1 : 0)}% cashback from order ${params.orderNumber} (${buyer.rank})`,
         metadata: { orderNumber: params.orderNumber, rate, rank: buyer.rank },
       },
@@ -293,6 +313,7 @@ export class WalletService {
         where: { id: userId },
         select: {
           buyerWallet: true,
+          sellerWallet: true,
           preferredCurrency: true,
           email: true,
           name: true,
@@ -301,24 +322,22 @@ export class WalletService {
         },
       });
       if (!user) throw new NotFoundException();
-      if (user.buyerWallet < dto.amount) {
+
+      // PAY-CRIT-007: check combined wallet — seller earnings land in
+      // sellerWallet; gating on buyerWallet alone means sellers can never
+      // withdraw their earnings.
+      const totalAvailable =
+        user.sellerWallet.toNumber() + user.buyerWallet.toNumber();
+      if (totalAvailable < dto.amount) {
         throw new BadRequestException('Insufficient wallet balance');
       }
-      /* Platform KYC gate — every payout rail (UPI, PayPal, Wise, Bank)
-         requires Sumsub-verified identity before money can leave the
-         platform. Compliance + AML + chargeback-defence; the gate is
-         method-agnostic so a non-KYC user can't cherry-pick the
-         cheapest rail to exfiltrate funds. */
+
       if (user.kycStatus !== 'VERIFIED') {
         throw new ForbiddenException(
           'KYC verification required before withdrawing funds. Complete identity verification from your profile.',
         );
       }
-      /* International rails (Wise / Bank) require Stripe Connect to be
-         onboarded so we can use Stripe-paid-out funds instead of the
-         manual admin queue. UPI + PayPal remain on the manual-approval
-         queue for v1 since Razorpay/PayPal payouts ride a different
-         lane. */
+
       const needsConnect =
         dto.method === 'WISE' || dto.method === 'BANK_TRANSFER_INTL';
       if (needsConnect && !user.stripeConnectPayoutsEnabled) {
@@ -327,20 +346,73 @@ export class WalletService {
         );
       }
 
-      const newBalance = user.buyerWallet - dto.amount;
+      // PAY-HIGH-020: validate UPI destination against saved PaymentMethod rows —
+      // prevents withdrawing to an arbitrary unverified destination on each request
+      if (dto.method === 'UPI' && 'upiId' in dto) {
+        const savedMethod = await tx.paymentMethod.findFirst({
+          where: { userId, type: 'UPI', upiId: dto.upiId },
+        });
+        if (!savedMethod) {
+          throw new BadRequestException(
+            'UPI ID not found in your saved payment methods. Add it via Profile → Payment Methods first.',
+          );
+        }
+      }
+
+      // PAY-HIGH-014: daily velocity check — max $5k or 5 requests per day
+      const dayStart = new Date();
+      dayStart.setHours(0, 0, 0, 0);
+      const todayCount = await tx.withdrawal.count({
+        where: { userId, requestedAt: { gte: dayStart }, status: { not: 'CANCELLED' } },
+      });
+      if (todayCount >= 5) {
+        throw new BadRequestException(
+          'Daily withdrawal limit reached (5 per day). Try again tomorrow.',
+        );
+      }
+      const todayTotal = await tx.withdrawal.aggregate({
+        where: { userId, requestedAt: { gte: dayStart }, status: { not: 'CANCELLED' } },
+        _sum: { amount: true },
+      });
+      const todaySpent = todayTotal._sum.amount?.toNumber() ?? 0;
+      if (todaySpent + dto.amount > 5000) {
+        throw new BadRequestException(
+          `Daily withdrawal cap exceeded. Remaining today: $${(5000 - todaySpent).toFixed(2)}`,
+        );
+      }
+
+      // PAY-CRIT-006: atomic balance debit — debit sellerWallet first, then
+      // buyerWallet for any remainder. The WHERE predicate ensures no race
+      // can overdraw: if the combined balance dropped between our read and
+      // this update, the updateMany returns count=0 and we throw.
+      const fromSeller = Math.min(user.sellerWallet.toNumber(), dto.amount);
+      const fromBuyer = dto.amount - fromSeller;
+
+      if (fromSeller > 0) {
+        const claim = await tx.user.updateMany({
+          where: { id: userId, sellerWallet: { gte: fromSeller } },
+          data: { sellerWallet: { decrement: fromSeller } },
+        });
+        if (claim.count === 0) {
+          throw new BadRequestException('Insufficient wallet balance');
+        }
+      }
+      if (fromBuyer > 0) {
+        const claim = await tx.user.updateMany({
+          where: { id: userId, buyerWallet: { gte: fromBuyer } },
+          data: { buyerWallet: { decrement: fromBuyer } },
+        });
+        if (claim.count === 0) {
+          throw new BadRequestException('Insufficient wallet balance');
+        }
+      }
+
       const currency = user.preferredCurrency ?? 'USD';
       const isInrPayout = dto.method === 'UPI';
 
-      await tx.user.update({
-        where: { id: userId },
-        data: { buyerWallet: { decrement: dto.amount } },
-      });
-
-      const withdrawalNumber = `WD-${Date.now()}-${Math.floor(
-        Math.random() * 9999,
-      )
-        .toString()
-        .padStart(4, '0')}`;
+      // PAY-LOW-036: timestamp+random collision → cryptographic random suffix
+      // randomBytes is a static import — no dynamic require needed
+      const withdrawalNumber = `WD-${new Date().getFullYear()}-${randomBytes(6).toString('hex').toUpperCase()}`;
 
       const methodFields = (() => {
         switch (dto.method) {
@@ -364,6 +436,15 @@ export class WalletService {
         }
       })();
 
+      // PAY-HIGH-019: re-read wallets after the atomic decrements
+      const postWithdraw = await tx.user.findUnique({
+        where: { id: userId },
+        select: { buyerWallet: true, sellerWallet: true },
+      });
+      const newBalanceAfter = postWithdraw
+        ? postWithdraw.buyerWallet.toNumber() + postWithdraw.sellerWallet.toNumber()
+        : totalAvailable - dto.amount;
+
       const withdrawal = await tx.withdrawal.create({
         data: {
           withdrawalNumber,
@@ -371,8 +452,6 @@ export class WalletService {
           amount: dto.amount,
           fee: 0,
           netAmount: dto.amount,
-          /* FX is identity for same-currency payouts. Admin queue updates
-             fxRate/fxProvider when a cross-currency ramp is used. */
           fxRate: 1,
           method: dto.method,
           status: 'PENDING',
@@ -390,8 +469,8 @@ export class WalletService {
           amount: -dto.amount,
           currency,
           withdrawalId: withdrawal.id,
-          balanceBefore: user.buyerWallet,
-          balanceAfter: newBalance,
+          balanceBefore: totalAvailable,
+          balanceAfter: newBalanceAfter,
           description: `Withdrawal request ${withdrawalNumber} · ${dto.method}`,
         },
       });

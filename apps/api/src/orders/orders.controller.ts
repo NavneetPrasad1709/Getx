@@ -13,6 +13,7 @@ import { Throttle } from '@nestjs/throttler';
 import { z } from 'zod';
 import { safeImageUrl } from '../common/validators/safe-url';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { RequireOwnership } from '../auth/decorators/require-ownership.decorator';
 import {
   OrdersService,
   type OrderDetail,
@@ -74,6 +75,7 @@ export class OrdersController {
   }
 
   @Get(':id')
+  @RequireOwnership('order')
   getOrder(
     @Param('id') id: string,
     @CurrentUser('id') userId: string,
@@ -82,11 +84,13 @@ export class OrdersController {
   }
 
   @Patch(':id/confirm-receipt')
+  @RequireOwnership('order')
   confirmReceipt(@Param('id') id: string, @CurrentUser('id') userId: string) {
     return this.orders.confirmReceipt(id, userId);
   }
 
   @Patch(':id/mark-delivered')
+  @RequireOwnership('order')
   markDelivered(
     @Param('id') id: string,
     @CurrentUser('id') userId: string,
@@ -97,6 +101,7 @@ export class OrdersController {
   }
 
   @Post(':id/reorder')
+  @RequireOwnership('order')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @HttpCode(HttpStatus.CREATED)
   reorder(
@@ -107,6 +112,7 @@ export class OrdersController {
   }
 
   @Post(':id/dispute')
+  @RequireOwnership('order')
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @HttpCode(HttpStatus.CREATED)
   openDispute(

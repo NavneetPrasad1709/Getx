@@ -110,7 +110,7 @@ export class OffersService {
       throw new ForbiddenException('Seller mode required');
     }
 
-    if (dto.price > request.budgetMax * 1.5) {
+    if (dto.price > request.budgetMax.toNumber() * 1.5) {
       throw new BadRequestException(
         `Price too high. Buyer's max is $${request.budgetMax}`,
       );
@@ -231,6 +231,11 @@ export class OffersService {
       include: PUBLIC_OFFER_INCLUDE,
     });
     if (!offer) throw new NotFoundException('Offer not found');
+    // RES-MED-031: withdrawn/expired offers are private — 404 prevents
+    // scrapers from reconstructing seller bid history
+    if (['WITHDRAWN', 'EXPIRED', 'REJECTED'].includes(offer.status)) {
+      throw new NotFoundException('Offer not found');
+    }
 
     const firstName =
       (offer.buyer.name ?? '').trim().split(/\s+/)[0] || 'Buyer';

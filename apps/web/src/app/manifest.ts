@@ -15,7 +15,8 @@ export default function manifest(): MetadataRoute.Manifest {
     name: 'GetX — Get gaming.',
     short_name: 'GetX',
     description:
-      'Escrow-protected gaming marketplace. Buy Pokémon GO accounts, top-ups, items, and boosting services. UPI payouts. Sub-10-minute delivery.',
+      // WEB-MED-031: removed "UPI payouts" — India-specific, contradicts global pivot
+      'Escrow-protected gaming marketplace. Buy Pokémon GO accounts, top-ups, items, and boosting services. Sub-10-minute delivery.',
     start_url: '/?source=pwa',
     scope: '/',
     display: 'standalone',

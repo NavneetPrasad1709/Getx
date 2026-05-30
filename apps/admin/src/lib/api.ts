@@ -1,4 +1,5 @@
 import axios, { AxiosError, type AxiosRequestConfig } from 'axios';
+import { requestStepUpToken } from './step-up';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
 
@@ -20,6 +21,7 @@ function isPublicPath(pathname: string): boolean {
 
 interface RetryConfig extends AxiosRequestConfig {
   _retry?: boolean;
+  _stepUp?: boolean;
 }
 
 let isRefreshing = false;
@@ -30,6 +32,30 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const original = error.config as RetryConfig | undefined;
     if (!original) return Promise.reject(error);
+
+    /* AUTH-008: a CRITICAL action came back demanding step-up re-auth. Pop the
+       re-auth modal, then replay the SAME request with the fresh token. Handled
+       before the _retry guard so it still fires on a request that already went
+       through the 401→refresh path. */
+    const code = (error.response?.data as { code?: string } | undefined)?.code;
+    if (
+      error.response?.status === 403 &&
+      code === 'step_up_required' &&
+      !original._stepUp
+    ) {
+      original._stepUp = true;
+      try {
+        const token = await requestStepUpToken();
+        original.headers = {
+          ...(original.headers ?? {}),
+          'X-Step-Up-Token': token,
+        };
+        return api(original);
+      } catch {
+        // User cancelled the modal — surface the original 403.
+        return Promise.reject(error);
+      }
+    }
 
     if (original._retry) return Promise.reject(error);
 

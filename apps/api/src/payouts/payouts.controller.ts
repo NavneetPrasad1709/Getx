@@ -17,6 +17,7 @@ import { ConfigService } from '@nestjs/config';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { StripeConnectService } from './stripe-connect.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 interface RawBodyRequest extends Request {
   rawBody?: Buffer;
@@ -35,6 +36,7 @@ export class PayoutsController {
   constructor(
     private connect: StripeConnectService,
     private config: ConfigService,
+    private prisma: PrismaService,
   ) {
     /* Separate Connect webhook secret — Stripe lets you register a
        distinct webhook endpoint per account context. Falls back to
@@ -95,9 +97,38 @@ export class PayoutsController {
     }
     try {
       const event = JSON.parse(body) as {
+        id?: string;
         type?: string;
         data?: { object?: Record<string, unknown> };
       };
+
+      // PAY-HIGH-011: idempotency — record the event before processing so
+      // replays are silently dropped without re-running handleAccountUpdated
+      if (event.id) {
+        try {
+          await this.prisma.webhookEvent.create({
+            data: {
+              provider: 'stripe-connect',
+              externalId: event.id,
+              type: event.type ?? 'unknown',
+            },
+          });
+        } catch (err) {
+          if (
+            err &&
+            typeof err === 'object' &&
+            'code' in err &&
+            (err as { code?: string }).code === 'P2002'
+          ) {
+            this.logger.log(
+              `Connect webhook idempotent skip (already processed): ${event.id}`,
+            );
+            return { received: true };
+          }
+          throw err;
+        }
+      }
+
       if (event.type === 'account.updated' && event.data?.object) {
         await this.connect.handleAccountUpdated(
           event.data.object as unknown as Parameters<
@@ -129,6 +160,20 @@ export class PayoutsController {
     const timestamp = parts.t?.[0];
     const sigs = parts.v1 ?? [];
     if (!timestamp || sigs.length === 0) return false;
+
+    // PAY-CRIT-010: replay window check — captured Connect events could
+    // otherwise be replayed indefinitely to flip payoutsEnabled=true
+    const sentAtMs = parseInt(timestamp, 10) * 1000;
+    if (
+      !Number.isFinite(sentAtMs) ||
+      Math.abs(Date.now() - sentAtMs) > 5 * 60 * 1000
+    ) {
+      this.logger.warn(
+        `Connect webhook timestamp outside 5-min tolerance (t=${timestamp}) — rejecting`,
+      );
+      return false;
+    }
+
     const expected = createHmac('sha256', this.connectWebhookSecret)
       .update(`${timestamp}.${body}`)
       .digest('hex');

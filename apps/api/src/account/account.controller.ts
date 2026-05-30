@@ -87,8 +87,9 @@ export class AccountController {
   /* Sumsub WebSDK access token — short-lived (10 min). Frontend exchanges
      it for the iframe URL. Non-IN users use this flow; IN users continue
      to use the Aadhaar form via POST /account/kyc above. */
+  // RES-HIGH-056: 3/hour — per-token Sumsub cost + vendor rate limit
   @Get('kyc/sumsub-token')
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Throttle({ default: { limit: 3, ttl: 3_600_000 } })
   sumsubToken(
     @CurrentUser('id') userId: string,
   ): Promise<{ token: string; userId: string; mock: boolean }> {

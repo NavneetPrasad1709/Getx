@@ -6,8 +6,6 @@ import { useSearchParams } from 'next/navigation';
 import {
   AlertTriangle,
   ArrowRight,
-  ChevronLeft,
-  ChevronRight,
   CircleDollarSign,
   Clock,
   Flame,
@@ -19,6 +17,8 @@ import {
 import { Skeleton, motion } from '@getx/ui';
 import { AdminShell } from '@/components/admin-shell';
 import { useAdminOrders } from '@/hooks/use-admin';
+import { PaginationButton } from '@/components/ui/pagination-button';
+import { timeAgo } from '@/lib/time';
 
 /* GETX Admin — Orders.
    ─────────────────────────────────────────────────────────────────────
@@ -48,16 +48,6 @@ interface OrderRow {
   createdAt: string;
   buyer: { username: string | null; name: string | null };
   seller: { username: string | null; name: string | null };
-}
-
-function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diff / 60_000);
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h`;
-  const d = Math.floor(h / 24);
-  return `${d}d`;
 }
 
 export default function AdminOrdersPage() {
@@ -373,47 +363,6 @@ function StatusPill({ status }: { status: string }) {
     >
       {meta.label}
     </span>
-  );
-}
-
-/* ══════════════════════════════════════════════════════════════════ */
-/*  PAGINATION + EMPTY                                                  */
-/* ══════════════════════════════════════════════════════════════════ */
-function PaginationButton({
-  disabled,
-  onClick,
-  dir,
-}: {
-  disabled: boolean;
-  onClick: () => void;
-  dir: 'prev' | 'next';
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`
-        inline-flex items-center gap-1 h-9 px-3.5 rounded-full text-[12.5px] font-semibold transition-colors
-        ${
-          disabled
-            ? 'bg-muted/15 text-muted-foreground/50 cursor-not-allowed'
-            : 'bg-muted/25 hover:bg-muted/40 ring-1 ring-border text-foreground'
-        }
-      `}
-    >
-      {dir === 'prev' ? (
-        <>
-          <ChevronLeft className="h-3.5 w-3.5" />
-          Previous
-        </>
-      ) : (
-        <>
-          Next
-          <ChevronRight className="h-3.5 w-3.5" />
-        </>
-      )}
-    </button>
   );
 }
 

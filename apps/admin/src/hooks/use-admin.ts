@@ -1,6 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { z } from 'zod';
 import { api } from '@/lib/api';
 
 function buildParams(filters: Record<string, unknown>): string {
@@ -13,68 +14,98 @@ function buildParams(filters: Record<string, unknown>): string {
   return s ? `?${s}` : '';
 }
 
-export interface DashboardData {
-  users: { total: number; newThisWeek: number; activeSellers: number };
-  listings: { total: number; active: number };
-  orders: { total: number; thisWeek: number };
-  gmv: { allTime: number; thisWeek: number };
-  revenue: { allTime: number; thisWeek: number };
-  pendingPayouts: number;
-  totalReviews: number;
-  recentAudits: Array<{
-    id: string;
-    action: string;
-    userId: string | null;
-    entity: string | null;
-    entityId: string | null;
-    severity: string;
-    createdAt: string;
-  }>;
-}
+// ── SAP-014: Zod response schemas ──────────────────────────────────────
+// Single source of truth for API shapes. TypeScript types derived from
+// these so the frontend never drifts from what the API actually returns.
+
+const PaginationSchema = z.object({
+  page: z.number(),
+  limit: z.number(),
+  total: z.number(),
+  totalPages: z.number(),
+});
+
+export const AdminUserRowSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  username: z.string().nullable(),
+  name: z.string().nullable(),
+  country: z.string(),
+  role: z.string(),
+  status: z.string(),
+  isSeller: z.boolean(),
+  kycLevel: z.string(),
+  sellerRating: z.number(),
+  totalSales: z.number(),
+  totalReviews: z.number(),
+  sellerWallet: z.number().or(z.instanceof(Object)).transform(Number),
+  createdAt: z.string(),
+  lastLoginAt: z.string().nullable(),
+  emailVerified: z.string().nullable(),
+  bannedBy: z.string().nullable().optional(),
+  banReason: z.string().nullable().optional(),
+});
+
+export type AdminUserRow = z.infer<typeof AdminUserRowSchema>;
+
+const UserListResponseSchema = z.object({
+  data: z.array(AdminUserRowSchema),
+  pagination: PaginationSchema,
+});
+
+const DashboardSchema = z.object({
+  users: z.object({ total: z.number(), newThisWeek: z.number(), activeSellers: z.number() }),
+  listings: z.object({ total: z.number(), active: z.number() }),
+  orders: z.object({ total: z.number(), thisWeek: z.number() }),
+  gmv: z.object({ allTime: z.number().or(z.instanceof(Object)).transform(Number), thisWeek: z.number().or(z.instanceof(Object)).transform(Number) }),
+  revenue: z.object({ allTime: z.number().or(z.instanceof(Object)).transform(Number), thisWeek: z.number().or(z.instanceof(Object)).transform(Number) }),
+  pendingPayouts: z.number().or(z.instanceof(Object)).transform(Number),
+  totalReviews: z.number(),
+  recentAudits: z.array(
+    z.object({
+      id: z.string(),
+      action: z.string(),
+      userId: z.string().nullable(),
+      entity: z.string().nullable(),
+      entityId: z.string().nullable(),
+      severity: z.string(),
+      createdAt: z.string(),
+    }),
+  ),
+});
+
+export type DashboardData = z.infer<typeof DashboardSchema>;
+
+const AlertsCountsSchema = z.object({
+  disputes: z.number(),
+  pendingListings: z.number(),
+  removedListings: z.number(),
+  hiddenReviews: z.number(),
+});
+
+export type AlertsCounts = z.infer<typeof AlertsCountsSchema>;
+
+// ── Queries ─────────────────────────────────────────────────────────────
 
 export function useDashboard() {
   return useQuery<DashboardData>({
     queryKey: ['admin', 'dashboard'],
     queryFn: async () => {
-      const { data } = await api.get<DashboardData>('/admin/dashboard');
-      return data;
+      const { data } = await api.get('/admin/dashboard');
+      return DashboardSchema.parse(data);
     },
     refetchInterval: 60_000,
   });
 }
 
-export interface Pagination {
-  page: number;
-  limit: number;
-  total: number;
-  totalPages: number;
-}
-
-export interface AdminUserRow {
-  id: string;
-  email: string;
-  username: string | null;
-  name: string | null;
-  country: string;
-  role: string;
-  status: string;
-  isSeller: boolean;
-  kycLevel: string;
-  sellerRating: number;
-  totalSales: number;
-  totalReviews: number;
-  sellerWallet: number;
-  createdAt: string;
-  lastLoginAt: string | null;
-  emailVerified: string | null;
-}
+export type Pagination = z.infer<typeof PaginationSchema>;
 
 export function useAdminUsers(filters: Record<string, unknown> = {}) {
-  return useQuery<{ data: AdminUserRow[]; pagination: Pagination }>({
+  return useQuery<z.infer<typeof UserListResponseSchema>>({
     queryKey: ['admin', 'users', filters],
     queryFn: async () => {
       const { data } = await api.get(`/admin/users${buildParams(filters)}`);
-      return data;
+      return UserListResponseSchema.parse(data);
     },
   });
 }
@@ -131,46 +162,17 @@ export function useAdminReviews(filters: Record<string, unknown> = {}) {
   });
 }
 
-/* Action queue — every "what needs me right now" stat the admin sees
-   on the dashboard alerts strip. Fans out small list queries (limit=1)
-   in parallel so we get accurate counts from `pagination.total` without
-   loading rows. Each query is independent so partial failures degrade
-   gracefully. */
-interface ListResponse {
-  data: unknown[];
-  pagination: Pagination;
-}
-
-export function useAdminAlerts() {
-  const disputed = useAdminOrders({ status: 'DISPUTED', limit: 1 }) as {
-    data?: ListResponse;
-    isLoading: boolean;
-  };
-  const pendingReview = useAdminListings({ status: 'PENDING_REVIEW', limit: 1 }) as {
-    data?: ListResponse;
-    isLoading: boolean;
-  };
-  const removedListings = useAdminListings({ status: 'REMOVED', limit: 1 }) as {
-    data?: ListResponse;
-    isLoading: boolean;
-  };
-  const hiddenReviews = useAdminReviews({ hidden: true, limit: 1 }) as {
-    data?: ListResponse;
-    isLoading: boolean;
-  };
-  return {
-    counts: {
-      disputes: disputed.data?.pagination.total ?? 0,
-      pendingListings: pendingReview.data?.pagination.total ?? 0,
-      removedListings: removedListings.data?.pagination.total ?? 0,
-      hiddenReviews: hiddenReviews.data?.pagination.total ?? 0,
+// SAP-013: single query replaces 4 parallel limit=1 calls. 30s refetch
+// keeps the action-queue tiles live without hammering the DB.
+export function useAdminAlertsCounts() {
+  return useQuery<AlertsCounts>({
+    queryKey: ['admin', 'alerts-counts'],
+    queryFn: async () => {
+      const { data } = await api.get('/admin/alerts-counts');
+      return AlertsCountsSchema.parse(data);
     },
-    isLoading:
-      disputed.isLoading ||
-      pendingReview.isLoading ||
-      removedListings.isLoading ||
-      hiddenReviews.isLoading,
-  };
+    refetchInterval: 30_000,
+  });
 }
 
 export function useAdminAuditLogs(filters: Record<string, unknown> = {}) {
@@ -182,6 +184,8 @@ export function useAdminAuditLogs(filters: Record<string, unknown> = {}) {
     },
   });
 }
+
+// ── Mutations ─────────────────────────────────────────────────────────
 
 export function useBanUser() {
   const qc = useQueryClient();

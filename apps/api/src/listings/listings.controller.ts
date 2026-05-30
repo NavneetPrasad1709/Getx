@@ -12,6 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import { z } from 'zod';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -48,8 +49,18 @@ export class ListingsController {
 
   @UseGuards(JwtAuthGuard)
   @Get('me/list')
-  getMyListings(@CurrentUser('id') userId: string): Promise<MyListingItem[]> {
-    return this.listings.getMyListings(userId);
+  getMyListings(
+    @CurrentUser('id') userId: string,
+    @Query() query: unknown,
+  ): Promise<{ data: MyListingItem[]; nextCursor: string | null }> {
+    // DB-032: cursor replaces page — pass ?cursor=<lastId> for subsequent pages
+    const { cursor, limit } = z
+      .object({
+        cursor: z.string().optional(),
+        limit: z.coerce.number().int().min(1).max(50).default(50),
+      })
+      .parse(query ?? {});
+    return this.listings.getMyListings(userId, cursor, limit);
   }
 
   @UseGuards(JwtAuthGuard)

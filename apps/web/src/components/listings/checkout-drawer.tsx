@@ -114,6 +114,9 @@ export function CheckoutDrawer({
 
       setStage('redirecting');
       const session = await createCheckout.mutateAsync(order.id);
+      // WEB-MED-022: pageshow fires when user hits back from Stripe (bfcache restore)
+      // so "Redirecting…" state doesn't stick permanently
+      window.addEventListener('pageshow', () => setStage('idle'), { once: true });
       window.location.href = session.checkoutUrl;
     } catch (err) {
       const msg =

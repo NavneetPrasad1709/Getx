@@ -5,11 +5,13 @@ import {
   HttpStatus,
   Post,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UploadsService, type UploadResult } from './uploads.service';
 
 interface MulterFile {
@@ -23,6 +25,9 @@ interface MulterFile {
 export class UploadsController {
   constructor(private uploads: UploadsService) {}
 
+  // RES-HIGH-004: explicit guard so a future @Public() on the parent controller
+  // can never accidentally expose this to unauthenticated callers (R2 drain)
+  @UseGuards(JwtAuthGuard)
   @Post('image')
   @Throttle({ default: { limit: 30, ttl: 600_000 } })
   @UseInterceptors(

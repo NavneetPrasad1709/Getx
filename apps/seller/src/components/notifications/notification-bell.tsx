@@ -11,7 +11,34 @@ import {
   useNotifications,
   useUnreadCount,
   type NotificationItem,
+  type NotificationType,
 } from '@/hooks/use-notifications';
+
+/* The seller bell only surfaces seller-facing notifications — new buyer
+   request matches (boosting requests), the seller's own offer outcomes,
+   order lifecycle updates, and payout/withdrawal events. Buyer-side
+   noise (OFFER_RECEIVED, REQUEST_NEW_OFFER, NEW_MESSAGE, reviews, etc.)
+   is filtered out server-side via the ?types= param. Module-level so the
+   reference is stable across renders (keeps the react-query key stable). */
+const SELLER_NOTIFICATION_TYPES: readonly NotificationType[] = [
+  'REQUEST_NEW_MATCH',
+  'OFFER_ACCEPTED',
+  'OFFER_REJECTED',
+  'ORDER_PAID',
+  'ORDER_IN_PROGRESS',
+  'ORDER_DELIVERED',
+  'ORDER_CONFIRMED',
+  'ORDER_COMPLETED',
+  'ORDER_CANCELLED',
+  'PAYMENT_DISPUTED',
+  'WITHDRAWAL_REQUESTED',
+  'WITHDRAWAL_APPROVED',
+  'WITHDRAWAL_PROCESSED',
+  'WITHDRAWAL_FAILED',
+  'DISPUTE_OPENED',
+  'DISPUTE_RESPONSE',
+  'DISPUTE_RESOLVED',
+];
 
 function timeAgo(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
@@ -30,8 +57,8 @@ export function NotificationBell() {
   const router = useRouter();
   const { isAuthenticated } = useAuth();
   const [open, setOpen] = useState(false);
-  const { data: notifs } = useNotifications(isAuthenticated && open);
-  const unreadCount = useUnreadCount(isAuthenticated).data ?? 0;
+  const { data: notifs } = useNotifications(isAuthenticated && open, SELLER_NOTIFICATION_TYPES);
+  const unreadCount = useUnreadCount(isAuthenticated, SELLER_NOTIFICATION_TYPES).data ?? 0;
   const markRead = useMarkNotificationRead();
   const markAll = useMarkAllRead();
 
@@ -113,7 +140,7 @@ export function NotificationBell() {
                   </div>
                   <div className="text-[13px] font-semibold mb-0.5">All caught up</div>
                   <div className="text-[11.5px] text-muted-foreground">
-                    Order, offer, and review alerts land here.
+                    Request matches, offer, order, and payout alerts land here.
                   </div>
                 </div>
               ) : (

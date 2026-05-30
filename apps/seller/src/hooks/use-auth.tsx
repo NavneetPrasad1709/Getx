@@ -47,7 +47,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // so a 401 here never re-enters the axios interceptor's redirect path.
   const refetch = async () => {
     try {
-      const res = await fetch(`${API_URL}/auth/session`, { credentials: 'include' });
+      // SAP-MED-038: AbortSignal timeout so a hung probe never blocks loading forever
+      const res = await fetch(`${API_URL}/auth/session`, {
+        credentials: 'include',
+        signal: AbortSignal.timeout(8000),
+      });
       if (res.ok) {
         const data = (await res.json()) as { user: AuthUser | null };
         setUser(data.user);

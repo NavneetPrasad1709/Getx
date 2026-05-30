@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { safeImageUrl } from '../../common/validators/safe-url';
+import { safeHttpUrl, safeImageUrl } from '../../common/validators/safe-url';
 
 export const ChangePasswordSchema = z.object({
   currentPassword: z.string().min(1),
@@ -50,7 +50,8 @@ export const UpdateProfileSchema = z
   .object({
     displayName: z.string().min(1).max(60).optional().nullable(),
     bio: z.string().max(500).optional().nullable(),
-    avatar: z.string().url().optional().nullable(),
+    // RES-HIGH-022: safeHttpUrl rejects data:text/html XSS payloads
+    avatar: safeHttpUrl().optional().nullable(),
     website: z
       .string()
       .url('Must be a full https URL')

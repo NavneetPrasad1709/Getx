@@ -12,6 +12,7 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import type { SavedSearch } from '@getx/database';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { RequireOwnership } from '../auth/decorators/require-ownership.decorator';
 import { SavedSearchesService } from './saved-searches.service';
 import {
   CreateSavedSearchSchema,
@@ -39,6 +40,7 @@ export class SavedSearchesController {
   }
 
   @Patch(':id')
+  @RequireOwnership('savedSearch')
   update(
     @CurrentUser('id') userId: string,
     @Param('id') id: string,
@@ -49,6 +51,7 @@ export class SavedSearchesController {
   }
 
   @Delete(':id')
+  @RequireOwnership('savedSearch')
   @HttpCode(HttpStatus.OK)
   remove(
     @CurrentUser('id') userId: string,
