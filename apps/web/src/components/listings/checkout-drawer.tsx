@@ -19,10 +19,12 @@ import {
   Lock,
   CreditCard,
   Sparkles,
+  BellRing,
 } from 'lucide-react';
 import type { ListingDetail, ListingVariant } from '@/hooks/use-listings';
 import { useCreateOrderFromListing, useCreateCheckout } from '@/hooks/use-orders';
 import { useAuth } from '@/hooks/use-auth';
+import { api } from '@/lib/api';
 import { formatMoney } from '@/lib/currency';
 import { CHECKOUT_DISABLED } from '@/lib/feature-flags';
 
@@ -55,14 +57,49 @@ export function CheckoutDrawer({
   activeVariant,
 }: Props) {
   const router = useRouter();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const createOrder = useCreateOrderFromListing();
   const createCheckout = useCreateCheckout();
   const [stage, setStage] = React.useState<'idle' | 'creating' | 'redirecting'>(
     'idle',
   );
 
+  // FLOW-003 / P3-T6: while checkout is disabled, capture launch intent instead
+  // of dropping it on a dead toast.
+  const [notifyEmail, setNotifyEmail] = React.useState('');
+  const [notifyState, setNotifyState] = React.useState<'idle' | 'busy' | 'done'>(
+    'idle',
+  );
+  React.useEffect(() => {
+    if (open && user?.email) setNotifyEmail(user.email);
+  }, [open, user?.email]);
+
   const busy = stage !== 'idle';
+
+  const submitNotify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (notifyState === 'busy') return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notifyEmail.trim())) {
+      toast.error('Enter a valid email.');
+      return;
+    }
+    setNotifyState('busy');
+    try {
+      // Per-game waitlist — country is inferred server-side from the request.
+      await api.post('/waitlist/game', {
+        email: notifyEmail.trim().toLowerCase(),
+        game: listing.game.slug,
+      });
+      setNotifyState('done');
+    } catch (err) {
+      const msg =
+        err instanceof AxiosError
+          ? (err.response?.data as { message?: string } | undefined)?.message
+          : null;
+      toast.error(msg ?? 'Could not save your email. Try again.');
+      setNotifyState('idle');
+    }
+  };
 
   /* Reset stage when the drawer opens — covers the case where the user
      opened, closed mid-flow, then reopens. */
@@ -267,34 +304,80 @@ export function CheckoutDrawer({
 
           {/* CTA */}
           <div className="px-5 pb-5 sm:pb-6">
-            <Button
-              onClick={handlePay}
-              disabled={busy}
-              size="xl"
-              className="w-full rounded-full shadow-[0_0_40px_-12px_hsl(var(--primary)/0.6)]"
-            >
-              {stage === 'creating' ? (
-                <>Creating order…</>
-              ) : stage === 'redirecting' ? (
-                <>Redirecting to checkout…</>
+            {CHECKOUT_DISABLED ? (
+              /* FLOW-003: checkout isn't live yet — capture "notify me at
+                 launch" intent instead of letting a real charge fire. */
+              notifyState === 'done' ? (
+                <div className="rounded-2xl bg-primary/10 ring-1 ring-primary/25 px-4 py-4 text-center">
+                  <BellRing className="h-5 w-5 text-primary mx-auto mb-1.5" />
+                  <div className="font-semibold text-[14px]">You’re on the list</div>
+                  <p className="text-[12.5px] text-muted-foreground mt-0.5">
+                    We’ll email you the moment checkout goes live.
+                  </p>
+                </div>
               ) : (
-                <>
-                  <CreditCard className="h-4 w-4" />
-                  Pay {formatMoney(total, currency)}
-                </>
-              )}
-            </Button>
+                <form onSubmit={submitNotify} className="space-y-2.5">
+                  <p className="text-[12.5px] text-muted-foreground text-center">
+                    Checkout opens in a few days. Get notified the moment it’s live.
+                  </p>
+                  <input
+                    type="email"
+                    inputMode="email"
+                    autoComplete="email"
+                    placeholder="you@email.com"
+                    value={notifyEmail}
+                    onChange={(e) => setNotifyEmail(e.target.value)}
+                    className="w-full h-11 px-4 rounded-full bg-surface ring-1 ring-border text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-primary/50"
+                  />
+                  <Button
+                    type="submit"
+                    disabled={notifyState === 'busy'}
+                    size="xl"
+                    className="w-full rounded-full"
+                  >
+                    {notifyState === 'busy' ? (
+                      'Saving…'
+                    ) : (
+                      <>
+                        <BellRing className="h-4 w-4" />
+                        Notify me at launch
+                      </>
+                    )}
+                  </Button>
+                </form>
+              )
+            ) : (
+              <Button
+                onClick={handlePay}
+                disabled={busy}
+                size="xl"
+                className="w-full rounded-full shadow-[0_0_40px_-12px_hsl(var(--primary)/0.6)]"
+              >
+                {stage === 'creating' ? (
+                  <>Creating order…</>
+                ) : stage === 'redirecting' ? (
+                  <>Redirecting to checkout…</>
+                ) : (
+                  <>
+                    <CreditCard className="h-4 w-4" />
+                    Pay {formatMoney(total, currency)}
+                  </>
+                )}
+              </Button>
+            )}
             <button
               type="button"
               onClick={onClose}
               disabled={busy}
               className="mt-3 w-full text-center font-mono text-[11px] uppercase tracking-wider text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors"
             >
-              Cancel
+              {CHECKOUT_DISABLED ? 'Close' : 'Cancel'}
             </button>
-            <p className="mt-3 text-center text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
-              Apply wallet credit or loyalty points on the next screen
-            </p>
+            {!CHECKOUT_DISABLED && (
+              <p className="mt-3 text-center text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                Apply wallet credit or loyalty points on the next screen
+              </p>
+            )}
           </div>
       </DialogContent>
     </Dialog>

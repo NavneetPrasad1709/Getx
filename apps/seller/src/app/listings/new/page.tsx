@@ -247,6 +247,17 @@ export default function CreateListingPage() {
       toast.success(publish ? 'Listing published!' : 'Saved as draft');
       router.push('/listings');
     } catch (err) {
+      // FUNC-006: the first-listing KYC gate returns a structured
+      // { code: 'kyc_required' } — route the seller straight to verification
+      // instead of leaving them on a dead error toast.
+      const code = (
+        err as { response?: { data?: { code?: string } } }
+      )?.response?.data?.code;
+      if (code === 'kyc_required') {
+        toast.error('Verify your identity to publish your first listing.');
+        router.push('/profile#kyc');
+        return;
+      }
       toast.error(extractAxiosMessage(err) ?? 'Failed to create listing');
     }
   };

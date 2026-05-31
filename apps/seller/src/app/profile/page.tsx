@@ -235,7 +235,13 @@ export default function ProfilePage() {
           />
         </motion.div>
 
-        <motion.div variants={{ hidden: { opacity: 0, y: 18 }, show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: EASE } } }}>
+        {/* FLOW-010: anchor target so the wallet "Start KYC" step deep-links
+            straight here (scroll-mt keeps it clear of the sticky header). */}
+        <motion.div
+          id="kyc"
+          className="scroll-mt-24"
+          variants={{ hidden: { opacity: 0, y: 18 }, show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: EASE } } }}
+        >
           <KycCard
             status={(kyc.data?.status ?? user.kycStatus) as KycStatusKey}
             submittedAt={kyc.data?.submittedAt}

@@ -554,7 +554,8 @@ function PayoutSetup({
           : 'Quick KYC via Sumsub. Required by our payment partners.',
       done: kycOk,
       action: 'Start KYC',
-      href: '/profile',
+      // FLOW-010: one-click deep-link straight to the KYC card.
+      href: '/profile#kyc',
       state:
         kycStatus === 'IN_REVIEW' ? 'pending' : kycOk ? 'done' : 'todo',
     },
