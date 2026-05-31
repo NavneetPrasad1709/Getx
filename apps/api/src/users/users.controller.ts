@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Header, Param, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Public } from '../auth/decorators/public.decorator';
 import { UsersService, type PublicProfile } from './users.service';
@@ -31,6 +31,7 @@ export class UsersController {
   @Public()
   @Get('leaderboard')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @Header('Cache-Control', 'public, max-age=30, s-maxage=60, stale-while-revalidate=300')
   leaderboard(): ReturnType<UsersService['getLeaderboard']> {
     return this.users.getLeaderboard();
   }

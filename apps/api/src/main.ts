@@ -68,6 +68,17 @@ async function bootstrap() {
       );
       process.exit(1);
     }
+    /* P5-T1: Redis coordinates rate limiting, cron leader-election, the
+       Socket.IO adapter, and the auth cache ACROSS replicas. Running more than
+       one replica without it causes duplicate cron money-effects and per-pod
+       (ineffective) rate limits. Require it by default; allow an explicit
+       single-replica opt-out. */
+    if (!process.env.REDIS_URL && process.env.ALLOW_SINGLE_REPLICA !== 'true') {
+      console.error(
+        '❌ REDIS_URL is required in production for multi-replica coordination (throttler, cron leader-election, socket adapter, auth cache). Set REDIS_URL, or set ALLOW_SINGLE_REPLICA=true to intentionally run a single replica without it.',
+      );
+      process.exit(1);
+    }
   }
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {

@@ -7,6 +7,7 @@ import type { Prisma } from '@getx/database';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { ChatGateway } from '../../conversations/chat.gateway';
+import { invalidateAuthUser } from '../../common/auth-user-cache';
 import { ListUsersDto, UserActionDto } from '../dto/admin.dto';
 
 const USERS_LIST_SELECT = {
@@ -175,6 +176,9 @@ export class AdminUserService {
     });
 
     this.chat.disconnectUser(userId);
+    // PERF-002: evict the cached auth row so the ban takes effect immediately
+    // (not after the cache TTL) on every replica.
+    await invalidateAuthUser(userId);
 
     await this.audit.log({
       userId: adminId,
@@ -211,6 +215,7 @@ export class AdminUserService {
         kycRejectionReason: null,
       },
     });
+    await invalidateAuthUser(userId);
 
     await this.audit.log({
       userId: adminId,
@@ -235,6 +240,7 @@ export class AdminUserService {
       where: { id: userId },
       data: { status: 'ACTIVE', banReason: null },
     });
+    await invalidateAuthUser(userId);
 
     await this.audit.log({
       userId: adminId,

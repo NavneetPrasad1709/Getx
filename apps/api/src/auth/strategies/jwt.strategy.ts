@@ -5,6 +5,10 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import type { Request } from 'express';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getRedisClient } from '../../common/redis.factory';
+import {
+  getCachedAuthUser,
+  setCachedAuthUser,
+} from '../../common/auth-user-cache';
 
 export interface JwtPayload {
   sub: string;
@@ -15,6 +19,10 @@ export interface JwtPayload {
 }
 
 const LAST_SEEN_TTL_SECONDS = 60;
+
+// PERF-007: bound the no-Redis fallback so it can't grow without limit on a
+// long-lived single-replica process.
+const LAST_SEEN_FALLBACK_MAX = 10_000;
 
 // Fallback in-memory throttle used when Redis is not configured (local dev /
 // single-replica). With Redis, each replica independently checks the shared
@@ -35,10 +43,17 @@ async function shouldUpdateLastSeen(userId: string): Promise<boolean> {
     return result === 'OK'; // 'OK' = key was set (not already present)
   }
 
-  // Fallback: in-memory throttle (per-replica — acceptable for dev)
+  // Fallback: in-memory throttle (per-replica — acceptable for dev), bounded.
   const now = Date.now();
   const last = lastSeenFallbackMap.get(userId) ?? 0;
   if (now - last < LAST_SEEN_TTL_SECONDS * 1000) return false;
+  if (
+    lastSeenFallbackMap.size >= LAST_SEEN_FALLBACK_MAX &&
+    !lastSeenFallbackMap.has(userId)
+  ) {
+    const oldest = lastSeenFallbackMap.keys().next().value;
+    if (oldest !== undefined) lastSeenFallbackMap.delete(oldest);
+  }
   lastSeenFallbackMap.set(userId, now);
   return true;
 }
@@ -69,22 +84,28 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: payload.sub },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        status: true,
-        emailVerified: true,
-        kycLevel: true,
-        kycStatus: true,
-        country: true,
-        name: true,
-        avatar: true,
-        passwordChangedAt: true,
-      },
-    });
+    // PERF-002: serve the projected user row from the short-TTL cache on a hit;
+    // fall back to the DB (source of truth) on a miss and populate the cache.
+    let user = await getCachedAuthUser(payload.sub);
+    if (!user) {
+      user = await this.prisma.user.findUnique({
+        where: { id: payload.sub },
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          status: true,
+          emailVerified: true,
+          kycLevel: true,
+          kycStatus: true,
+          country: true,
+          name: true,
+          avatar: true,
+          passwordChangedAt: true,
+        },
+      });
+      if (user) await setCachedAuthUser(payload.sub, user);
+    }
 
     if (!user) throw new UnauthorizedException('User not found');
     if (user.status === 'BANNED')

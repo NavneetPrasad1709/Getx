@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Header, Param, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Public } from '../auth/decorators/public.decorator';
 import {
@@ -8,12 +8,17 @@ import {
   type GameListItem,
 } from './games.service';
 
+// PERF-013: genuinely public, near-immutable reads — let the Vercel proxy/CDN
+// absorb them. Authed endpoints deliberately omit this and stay no-store.
+const PUBLIC_CACHE = 'public, max-age=30, s-maxage=60, stale-while-revalidate=300';
+
 @Controller('games')
 export class GamesController {
   constructor(private games: GamesService) {}
 
   @Public()
   @Get()
+  @Header('Cache-Control', PUBLIC_CACHE)
   listGames(): Promise<GameListItem[]> {
     return this.games.listGames();
   }
@@ -32,6 +37,7 @@ export class GamesController {
 
   @Public()
   @Get(':slug')
+  @Header('Cache-Control', PUBLIC_CACHE)
   getGame(@Param('slug') slug: string): Promise<GameDetail> {
     return this.games.getGameBySlug(slug);
   }

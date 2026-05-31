@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Prisma } from '@getx/database';
 import { PrismaService } from '../prisma/prisma.service';
+import { cached } from '../common/cache';
 
 export interface BoostingSubService {
   slug: string;
@@ -67,11 +68,15 @@ export class GamesService {
   constructor(private prisma: PrismaService) {}
 
   listGames(): Promise<GameListItem[]> {
-    return this.prisma.game.findMany({
-      where: { isActive: true },
-      orderBy: { sortOrder: 'asc' },
-      select: LIST_GAME_SELECT,
-    });
+    // PERF-006: near-static reference data — short cache, invalidated naturally
+    // by the 60s TTL (admin game edits are rare).
+    return cached('games:list:v1', 60, () =>
+      this.prisma.game.findMany({
+        where: { isActive: true },
+        orderBy: { sortOrder: 'asc' },
+        select: LIST_GAME_SELECT,
+      }),
+    );
   }
 
   /* Public game search — used by the /search federated page. Matches
@@ -96,15 +101,17 @@ export class GamesService {
   }
 
   async getGameBySlug(slug: string): Promise<GameDetail> {
-    const game = await this.prisma.game.findUnique({
-      where: { slug },
-      select: DETAIL_GAME_SELECT,
+    // Only resolved (found) games are cached — the not-found throw propagates
+    // out of cached() and is never stored.
+    return cached(`games:slug:${slug}:v1`, 60, async () => {
+      const game = await this.prisma.game.findUnique({
+        where: { slug },
+        select: DETAIL_GAME_SELECT,
+      });
+      if (!game) throw new NotFoundException(`Game not found: ${slug}`);
+      if (!game.isActive) throw new NotFoundException('Game not available');
+      return game;
     });
-
-    if (!game) throw new NotFoundException(`Game not found: ${slug}`);
-    if (!game.isActive) throw new NotFoundException('Game not available');
-
-    return game;
   }
 
   async getServiceConfig(

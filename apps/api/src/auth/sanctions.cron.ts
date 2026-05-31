@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { HARD_BLOCKED_COUNTRIES } from './sanctions';
 import { withCronLock } from '../common/cron-lock';
+import { invalidateAuthUser } from '../common/auth-user-cache';
 
 /* Daily sanctions sweep — catches accounts whose country was added to
    the hard-block list after signup, or which had no country recorded
@@ -57,6 +58,7 @@ export class SanctionsCron {
             banReason: `Sanctions sweep: country ${u.country} on block list`,
           },
         });
+        await invalidateAuthUser(u.id);
         await this.audit.log({
           userId: u.id,
           action: 'sanctions.cron_flagged',

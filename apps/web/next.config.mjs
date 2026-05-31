@@ -8,8 +8,11 @@ const nextConfig = {
      consumers like the NestJS API can require them. transpilePackages tells
      Next to keep transpiling them from `src/` so frontend dev doesn't need
      a workspace rebuild on every change. */
+  /* PERF-010: @getx/database is intentionally NOT transpiled here — it pulls
+     the Prisma client + engine into the frontend build graph. Frontend code
+     consumes @getx/types only; the one server-side health route imports the
+     package's prebuilt dist. */
   transpilePackages: [
-    '@getx/database',
     '@getx/games',
     '@getx/types',
     '@getx/utils',

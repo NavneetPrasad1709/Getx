@@ -26,6 +26,7 @@ import {
 } from './sanctions';
 import { firstOrigin } from '../common/config-helpers';
 import { encryptPii, decryptPii } from '../common/pii-crypto';
+import { invalidateAuthUser } from '../common/auth-user-cache';
 import {
   generateTotpSecret,
   totpKeyUri,
@@ -611,6 +612,10 @@ export class AuthService {
         data: { revoked: true, revokedAt: new Date() },
       }),
     ]);
+
+    // PERF-002 / security: drop the cached auth row so the passwordChangedAt
+    // token-invalidation check uses the new timestamp on the very next request.
+    await invalidateAuthUser(reset.userId);
 
     await this.audit.log({
       userId: reset.userId,

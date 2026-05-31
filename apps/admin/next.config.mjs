@@ -8,13 +8,8 @@ const nextConfig = {
      consumers like the NestJS API can require them. transpilePackages tells
      Next to keep transpiling them from `src/` so frontend dev doesn't need
      a workspace rebuild on every change. */
-  transpilePackages: [
-    '@getx/database',
-    '@getx/games',
-    '@getx/types',
-    '@getx/utils',
-    '@getx/ui',
-  ],
+  // PERF-010: @getx/database (Prisma) is not part of the frontend build graph.
+  transpilePackages: ['@getx/games', '@getx/types', '@getx/utils', '@getx/ui'],
 
   images: {
     remotePatterns: [

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import type { Prisma } from '@getx/database';
 import { PrismaService } from '../prisma/prisma.service';
+import { cached } from '../common/cache';
 
 const PUBLIC_PROFILE_SELECT = {
   id: true,
@@ -120,32 +121,35 @@ export class UsersService {
       country: string;
     }>
   > {
-    const rows = await this.prisma.user.findMany({
-      where: { status: 'ACTIVE', xp: { gt: 0 } },
-      orderBy: [{ xp: 'desc' }, { totalSales: 'desc' }],
-      take: 100,
-      select: {
-        username: true,
-        name: true,
-        avatar: true,
-        rank: true,
-        xp: true,
-        totalSales: true,
-        sellerRating: true,
-        country: true,
-      },
+    // PERF-006: ranking shifts slowly — a 60s cache absorbs the public traffic.
+    return cached('users:leaderboard:v1', 60, async () => {
+      const rows = await this.prisma.user.findMany({
+        where: { status: 'ACTIVE', xp: { gt: 0 } },
+        orderBy: [{ xp: 'desc' }, { totalSales: 'desc' }],
+        take: 100,
+        select: {
+          username: true,
+          name: true,
+          avatar: true,
+          rank: true,
+          xp: true,
+          totalSales: true,
+          sellerRating: true,
+          country: true,
+        },
+      });
+      return rows.map((r, i) => ({
+        position: i + 1,
+        username: r.username,
+        name: r.name,
+        avatar: r.avatar,
+        rank: r.rank,
+        xp: r.xp,
+        totalSales: r.totalSales,
+        sellerRating: r.sellerRating,
+        country: r.country,
+      }));
     });
-    return rows.map((r, i) => ({
-      position: i + 1,
-      username: r.username,
-      name: r.name,
-      avatar: r.avatar,
-      rank: r.rank,
-      xp: r.xp,
-      totalSales: r.totalSales,
-      sellerRating: r.sellerRating,
-      country: r.country,
-    }));
   }
 
   /* Returns a stable per-user unsubscribe URL. Lazily mints a token on

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@getx/database';
 import { PrismaService } from '../../prisma/prisma.service';
+import { cached } from '../../common/cache';
 
 @Injectable()
 export class AdminDashboardService {
@@ -12,21 +13,32 @@ export class AdminDashboardService {
     removedListings: number;
     hiddenReviews: number;
   }> {
-    const [disputes, pendingListings, removedListings, hiddenReviews] =
-      await Promise.all([
-        this.prisma.order.count({ where: { status: 'DISPUTED' } }),
-        this.prisma.productListing.count({
-          where: { status: 'PENDING_REVIEW', deletedAt: null },
-        }),
-        this.prisma.productListing.count({
-          where: { status: 'REMOVED', deletedAt: null },
-        }),
-        this.prisma.review.count({ where: { isHidden: true } }),
-      ]);
-    return { disputes, pendingListings, removedListings, hiddenReviews };
+    // PERF-004: polled every 30s by the shell — short cache absorbs the spam.
+    return cached('admin:alerts-counts:v1', 20, async () => {
+      const [disputes, pendingListings, removedListings, hiddenReviews] =
+        await Promise.all([
+          this.prisma.order.count({ where: { status: 'DISPUTED' } }),
+          this.prisma.productListing.count({
+            where: { status: 'PENDING_REVIEW', deletedAt: null },
+          }),
+          this.prisma.productListing.count({
+            where: { status: 'REMOVED', deletedAt: null },
+          }),
+          this.prisma.review.count({ where: { isHidden: true } }),
+        ]);
+      return { disputes, pendingListings, removedListings, hiddenReviews };
+    });
   }
 
+  /* PERF-004: ~15 full-table count/aggregate queries, polled every 60s by the
+     dashboard. Cache the assembled payload for 45s so the poll mostly reads
+     cache. All money values are normalised to plain numbers so the payload is
+     JSON/cache-safe (and matches the admin Zod schema). */
   async getDashboard() {
+    return cached('admin:dashboard:v1', 45, () => this.computeDashboard());
+  }
+
+  private async computeDashboard() {
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const PAID_LIKE: Prisma.OrderWhereInput['status'] = {
       in: ['PAID', 'IN_PROGRESS', 'DELIVERED', 'CONFIRMED', 'COMPLETED'],
@@ -80,9 +92,12 @@ export class AdminDashboardService {
       users: { total: totalUsers, newThisWeek: newUsersWeek, activeSellers },
       listings: { total: totalListings, active: activeListings },
       orders: { total: totalOrders, thisWeek: ordersWeek },
-      gmv: { allTime: gmvAllTime._sum.buyerTotal ?? 0, thisWeek: gmvWeek._sum.buyerTotal ?? 0 },
+      gmv: {
+        allTime: gmvAllTime._sum.buyerTotal?.toNumber() ?? 0,
+        thisWeek: gmvWeek._sum.buyerTotal?.toNumber() ?? 0,
+      },
       revenue: { allTime: revAll, thisWeek: revWeek },
-      pendingPayouts: pendingPayouts._sum.sellerWallet ?? 0,
+      pendingPayouts: pendingPayouts._sum.sellerWallet?.toNumber() ?? 0,
       totalReviews,
       recentAudits,
     };
