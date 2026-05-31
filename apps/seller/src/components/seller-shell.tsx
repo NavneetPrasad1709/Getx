@@ -118,6 +118,13 @@ export function SellerShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen flex bg-background">
+      {/* UIUX-002/003: skip link — first focusable element, jumps to <main>. */}
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:top-3 focus:left-3 focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2 focus:text-[13px] focus:font-semibold focus:text-primary-foreground"
+      >
+        Skip to content
+      </a>
       {/* ─────────── Ambient page gradient ─────────── */}
       <div
         aria-hidden
@@ -537,7 +544,7 @@ export function SellerShell({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 min-w-0">{children}</main>
+        <main id="main" className="flex-1 min-w-0">{children}</main>
       </div>
     </div>
   );

@@ -52,10 +52,11 @@ export const UpdateProfileSchema = z
     bio: z.string().max(500).optional().nullable(),
     // RES-HIGH-022: safeHttpUrl rejects data:text/html XSS payloads
     avatar: safeHttpUrl().optional().nullable(),
-    website: z
-      .string()
-      .url('Must be a full https URL')
-      .max(200)
+    // APPSEC-002: was z.url(), which accepts javascript:/data: schemes that
+    // become stored XSS when the profile link is rendered. safeHttpUrl is
+    // http(s)-only.
+    website: safeHttpUrl()
+      .refine((u) => u.length <= 200, 'URL too long')
       .optional()
       .nullable(),
     twitterHandle: z

@@ -5,6 +5,7 @@ import { AuthProvider } from '@/hooks/use-auth';
 import { QueryProvider } from '@/components/query-provider';
 import { CustomCursorLoader } from '@/components/custom-cursor-loader';
 import { CookieConsent } from '@/components/cookie-consent';
+import { serializeJsonLd } from '@/lib/json-ld';
 import './globals.css';
 
 /* next/font self-hosts the WOFF2 files at build, drops the render-
@@ -92,11 +93,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             Product schema locally. */}
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(organizationJsonLd) }}
         />
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(websiteJsonLd) }}
         />
       </head>
       <body className="antialiased overflow-x-hidden" suppressHydrationWarning>

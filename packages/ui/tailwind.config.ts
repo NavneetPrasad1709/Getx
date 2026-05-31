@@ -79,6 +79,15 @@ const config: Config = {
         sans: ['var(--font-body)'],
         mono: ['var(--font-mono)'],
       },
+      /* UIUX-004: the design system uses `duration-ui` and `ease-apple`
+         (~46 call sites). Without these tokens those utilities resolved to
+         nothing — transitions silently snapped instead of easing. */
+      transitionDuration: {
+        ui: '200ms',
+      },
+      transitionTimingFunction: {
+        apple: 'cubic-bezier(0.22, 1, 0.36, 1)',
+      },
       animation: {
         blob: 'blob 20s infinite',
         'fade-up': 'fade-up 0.5s ease-out',

@@ -132,7 +132,14 @@ const FloatingInput = React.forwardRef<HTMLInputElement, FloatingInputProps>(
           ) : null}
         </div>
         {error ? (
-          <p id={descId} className="mt-1.5 flex items-center gap-1 text-xs text-error">
+          /* UIUX-012: announce validation errors to screen readers as they
+             appear (role=alert → assertive live region). */
+          <p
+            id={descId}
+            role="alert"
+            aria-live="polite"
+            className="mt-1.5 flex items-center gap-1 text-xs text-error"
+          >
             {error}
           </p>
         ) : hint ? (

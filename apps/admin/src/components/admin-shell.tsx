@@ -15,7 +15,6 @@ import {
   MessageSquareWarning,
   Package,
   ScrollText,
-  Search,
   ShieldAlert,
   ShieldCheck,
   Star,
@@ -112,6 +111,13 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen flex bg-background">
+      {/* UIUX-002/003: skip link — first focusable element, jumps to <main>. */}
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:top-3 focus:left-3 focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2 focus:text-[13px] focus:font-semibold focus:text-primary-foreground"
+      >
+        Skip to content
+      </a>
       {/* Ambient gradient — slight error-tinted bloom so admin always
           feels distinct from seller/buyer apps. */}
       <div
@@ -352,16 +358,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
         {/* Desktop header */}
         <header className="hidden md:flex sticky top-0 z-20 border-b border-border bg-surface/70 backdrop-blur-xl items-center justify-between gap-4 px-6 py-3">
-          <div className="flex-1 max-w-md">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <input
-                type="search"
-                placeholder="Search users, orders, listings…"
-                className="w-full h-9 pl-9 pr-3 rounded-full bg-muted/25 ring-1 ring-transparent text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-error/40 focus:bg-surface transition-all"
-              />
-            </div>
-          </div>
+          {/* UIUX-005: removed the decorative, non-functional header search. */}
+          <div className="flex-1" />
 
           <div className="flex items-center gap-2">
             {totalAlerts > 0 && (
@@ -380,7 +378,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 min-w-0">{children}</main>
+        <main id="main" className="flex-1 min-w-0">{children}</main>
       </div>
     </div>
   );

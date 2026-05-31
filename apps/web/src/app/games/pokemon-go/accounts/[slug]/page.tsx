@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Button, toast } from '@getx/ui';
 import { Header } from '@/components/header';
 import { gateCheckout } from '@/lib/feature-flags';
+import { serializeJsonLd } from '@/lib/json-ld';
 import { LandingFooter } from '@/components/landing/landing-footer';
 import { useListing, useRelatedListings } from '@/hooks/use-listings';
 import {
@@ -126,12 +127,11 @@ export default function AccountDetailPage() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
-      {/* WEB-MED-037: escape </script> sequences that could break out of the JSON-LD tag */}
+      {/* APPSEC-005: serializeJsonLd escapes </script> breakout chars. */}
       <script
         type="application/ld+json"
         // eslint-disable-next-line react/no-danger
-        // eslint-disable-next-line react/no-danger
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd).replace(/</g, '\u003c').replace(/>/g, '\u003e').replace(/&/g, '\u0026') }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(productJsonLd) }}
       />
 
       <main id="main" className="flex-1 container pt-24 pb-20">

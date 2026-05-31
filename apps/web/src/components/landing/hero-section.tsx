@@ -716,8 +716,11 @@ function DropCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: 0.06 * index, ease: EASE }}
     >
+      {/* UIUX-001: the showcase cards are illustrative, not real listings, so
+          they route to the real Accounts browse page instead of a phantom
+          per-listing slug that 404s. */}
       <Link
-        href={`/games/pokemon-go/accounts/${drop.id}`}
+        href="/games/pokemon-go/accounts"
         className="
           group block overflow-hidden rounded-2xl
           bg-surface ring-1 ring-border
