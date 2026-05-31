@@ -1750,7 +1750,7 @@ function CategoryStrip({
                 lift mirror the rest of the strip's micro-interactions
                 so it doesn't feel grafted on. */}
             <a
-              href={process.env.NEXT_PUBLIC_SELLER_URL || 'http://localhost:3001'}
+              href={process.env.NEXT_PUBLIC_SELLER_URL || '/sell'}
               target="_blank"
               rel="noopener noreferrer"
               aria-label="Sell on GETX (opens seller dashboard)"

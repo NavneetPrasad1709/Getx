@@ -472,11 +472,16 @@ export class ListingsService {
     if (!seller.isSeller) {
       throw new BadRequestException('Seller mode not activated');
     }
-    // RES-HIGH-041: KYC gate — require at least submitted/in-review before first listing
+    // RES-HIGH-041: KYC gate — require at least submitted/in-review before first listing.
+    // FUNC-006: return a structured, actionable error so the seller UI can
+    // deep-link straight to verification instead of showing a dead 400 toast.
     if (!['VERIFIED', 'SUBMITTED', 'IN_REVIEW', 'PENDING'].includes(seller.kycStatus)) {
-      throw new BadRequestException(
-        'Identity verification required before listing. Complete KYC from your profile.',
-      );
+      throw new BadRequestException({
+        statusCode: 400,
+        code: 'kyc_required',
+        message: 'Verify your identity before publishing your first listing.',
+        kycUrl: '/profile/settings/kyc',
+      });
     }
 
     // RES-MED-052: active listing cap — prevent single account from spamming unlimited listings

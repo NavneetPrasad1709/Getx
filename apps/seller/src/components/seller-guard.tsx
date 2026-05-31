@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
+import { api } from '@/lib/api';
 
 /* Inline spinner — seller app doesn't ship lucide-react. */
 function Spinner({ className }: { className?: string }) {
@@ -89,12 +90,11 @@ function NotASellerScreen() {
     setBusy(true);
     setErr(null);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? '/api/v1';
-      const res = await fetch(`${apiUrl}/auth/me/activate-seller`, {
-        method: 'PATCH',
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error(`Activate failed (${res.status})`);
+      /* FUNC-003: the previous native fetch() omitted Content-Type, so the
+         API's JSON-only CSRF gate rejected it with 415 and activation never
+         worked. The axios client sets Content-Type: application/json (and
+         routes through the same-origin proxy), so the PATCH succeeds. */
+      await api.patch('/auth/me/activate-seller');
       await refetch();
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Activation failed');

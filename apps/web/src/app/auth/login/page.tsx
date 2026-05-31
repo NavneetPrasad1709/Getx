@@ -173,15 +173,23 @@ function LoginForm() {
       }
     } catch (error) {
       const retryAfter = readRetryAfter(error);
+      const errData = (error as AxiosError)?.response?.data as
+        | { code?: string; message?: string }
+        | undefined;
       if (retryAfter !== null) {
         cooldown.start(retryAfter);
         toast.error(
           `Too many attempts. Try again in ${retryAfter}s.`,
         );
+      } else if (errData?.code === 'email_unverified') {
+        // FLOW-001: send them to verify their email (prefilled) instead of a
+        // dead "Invalid credentials" toast.
+        toast.error('Please verify your email to finish signing in.');
+        router.push(
+          `/auth/verify-email?email=${encodeURIComponent(data.email)}`,
+        );
       } else {
-        const msg =
-          (error as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-          'Login failed';
+        const msg = errData?.message || 'Login failed';
         toast.error(msg);
       }
     } finally {

@@ -7,6 +7,7 @@ import { usePathname } from 'next/navigation';
 import {
   AlertTriangle,
   ArrowUpRight,
+  Banknote,
   ClipboardList,
   FileWarning,
   LayoutDashboard,
@@ -66,6 +67,10 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Identity',
     items: [{ href: '/users', label: 'Users', icon: Users }],
+  },
+  {
+    label: 'Finance',
+    items: [{ href: '/withdrawals', label: 'Withdrawals', icon: Banknote }],
   },
   {
     label: 'System',

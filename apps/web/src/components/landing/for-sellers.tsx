@@ -65,7 +65,9 @@ const HOW_IT_WORKS = [
 
 export function ForSellers() {
   const reduce = useReducedMotion();
-  const sellerUrl = process.env.NEXT_PUBLIC_SELLER_URL || 'http://localhost:3001';
+  // FUNC-004: fall back to the same-origin /sell redirect (web next.config maps
+  // it to the seller origin), never a dead localhost link in production.
+  const sellerUrl = process.env.NEXT_PUBLIC_SELLER_URL || '/sell';
 
   return (
     <section

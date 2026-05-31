@@ -38,10 +38,23 @@ function LoginForm() {
   const onSubmit = async (data: FormData) => {
     setLoading(true);
     try {
-      await api.post('/auth/login', { ...data, rememberMe: true });
+      const res = await api.post('/auth/login', { ...data, rememberMe: true });
+      // FLOW-011: verify admin role BEFORE navigating. A non-admin who logs in
+      // here would otherwise be pushed into the console and bounced straight
+      // back out by the middleware — an infinite redirect loop. The login
+      // response carries the role, so check it directly.
+      const role = (res.data as { user?: { role?: string } })?.user?.role;
+      if (role !== 'ADMIN' && role !== 'SUPER_ADMIN') {
+        await api.post('/auth/logout').catch(() => {});
+        toast.error('This account does not have admin access.');
+        setLoading(false);
+        return;
+      }
       await refetch();
       toast.success('Welcome, admin');
-      router.push(next);
+      // Same-origin paths only — never honour an absolute/protocol-relative next.
+      const dest = next.startsWith('/') && !next.startsWith('//') ? next : '/';
+      router.push(dest);
     } catch (err) {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??

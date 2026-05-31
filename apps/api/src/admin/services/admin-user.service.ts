@@ -188,6 +188,42 @@ export class AdminUserService {
     return { success: true };
   }
 
+  /* P3-T5 — interim manual KYC verification. Until the Sumsub widget is wired,
+     ops can flip a reviewed seller to VERIFIED so the KYC → withdrawal chain is
+     not permanently blocked. verifiedTier is left untouched (it's an
+     orders/rating tier, not a KYC flag). */
+  async verifyKyc(adminId: string, userId: string) {
+    const target = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, kycStatus: true },
+    });
+    if (!target) throw new NotFoundException();
+    if (target.kycStatus === 'VERIFIED') {
+      return { success: true, alreadyVerified: true };
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        kycStatus: 'VERIFIED',
+        kycLevel: 'LEVEL_2',
+        kycVerifiedAt: new Date(),
+        kycRejectionReason: null,
+      },
+    });
+
+    await this.audit.log({
+      userId: adminId,
+      action: 'admin.kyc_verified',
+      entity: 'User',
+      entityId: userId,
+      metadata: { targetEmail: target.email },
+      severity: 'CRITICAL',
+    });
+
+    return { success: true };
+  }
+
   async unbanUser(adminId: string, userId: string) {
     const target = await this.prisma.user.findUnique({
       where: { id: userId },

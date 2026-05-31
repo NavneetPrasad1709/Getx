@@ -275,3 +275,66 @@ export function useHideReview() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin'] }),
   });
 }
+
+// P3-T5 — interim manual KYC verification.
+export function useVerifyKyc() {
+  const qc = useQueryClient();
+  return useMutation<unknown, Error, string>({
+    mutationFn: async (userId) => {
+      const { data } = await api.post(`/admin/users/${userId}/verify-kyc`);
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin'] }),
+  });
+}
+
+// P3-T7 — withdrawals review.
+export interface AdminWithdrawalRow {
+  id: string;
+  withdrawalNumber: string;
+  amount: number | string;
+  fee: number | string;
+  netAmount: number | string;
+  method: string;
+  status: string;
+  requestedAt: string;
+  user: { id: string; email: string; username: string | null; name: string | null };
+}
+
+export function useAdminWithdrawals(status?: string) {
+  return useQuery<AdminWithdrawalRow[]>({
+    queryKey: ['admin', 'withdrawals', status ?? 'all'],
+    queryFn: async () => {
+      const { data } = await api.get(
+        `/admin/withdrawals${status ? `?status=${status}` : ''}`,
+      );
+      return data as AdminWithdrawalRow[];
+    },
+  });
+}
+
+export function useApproveWithdrawal() {
+  const qc = useQueryClient();
+  return useMutation<unknown, Error, { id: string; notes?: string }>({
+    mutationFn: async ({ id, notes }) => {
+      const { data } = await api.post(`/admin/withdrawals/${id}/approve`, {
+        notes,
+      });
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin'] }),
+  });
+}
+
+export function useRejectWithdrawal() {
+  const qc = useQueryClient();
+  return useMutation<unknown, Error, { id: string; reason: string }>({
+    mutationFn: async ({ id, reason }) => {
+      const { data } = await api.post(`/admin/withdrawals/${id}/reject`, {
+        reason,
+      });
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin'] }),
+  });
+}

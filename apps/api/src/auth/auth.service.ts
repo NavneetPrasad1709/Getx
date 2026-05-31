@@ -61,7 +61,7 @@ export class AuthService {
         severity: 'WARNING',
       });
       throw new ForbiddenException(
-        'GETX is not available in your region yet. Join the waitlist at getx.gg/waitlist.',
+        'GETX is not available in your region yet. Join the waitlist at getx.live/waitlist.',
       );
     }
 
@@ -89,7 +89,7 @@ export class AuthService {
         severity: 'INFO',
       });
       throw new ForbiddenException(
-        'Soft launch in progress. We&apos;re onboarding the US and UK first — join the waitlist and we&apos;ll email when your country is live.',
+        'GETX is rolling out by region. Your country isn’t live yet — join the waitlist and we’ll email you the moment it opens.',
       );
     }
 
@@ -360,23 +360,20 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Password verified — NOW check account eligibility. Generic error
-    // message used for all cases to avoid leaking which specific gate failed.
+    // Password verified — NOW check account eligibility.
+    // Locked / banned / deleted / suspended stay collapsed into the generic
+    // 'Invalid credentials' so we never disclose sensitive account state.
     const isLockedOut = user.lockedUntil && user.lockedUntil > new Date();
-    const isIneligible =
+    const isBlocked =
       isLockedOut ||
-      !user.emailVerified ||
       user.status === 'BANNED' ||
       user.status === 'DELETED' ||
       user.status === 'SUSPENDED';
 
-    if (isIneligible) {
-      // Audit the specific reason server-side for ops visibility.
+    if (isBlocked) {
       const reason = isLockedOut
         ? 'locked'
-        : !user.emailVerified
-          ? 'unverified'
-          : user.status?.toLowerCase() ?? 'unknown';
+        : user.status?.toLowerCase() ?? 'unknown';
       await this.audit.log({
         userId: user.id,
         action: 'auth.login_ineligible',
@@ -388,6 +385,31 @@ export class AuthService {
         severity: 'WARNING',
       });
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    /* FLOW-001: the password was correct, so the caller IS the account owner —
+       telling them their email is unverified is not an enumeration risk, and
+       the old generic 'Invalid credentials' left newly-registered users
+       permanently stuck (especially when OTP mail was mocked). Return an
+       actionable, machine-readable code so the SPA can route to verify + resend. */
+    if (!user.emailVerified) {
+      await this.audit.log({
+        userId: user.id,
+        action: 'auth.login_ineligible',
+        entity: 'User',
+        entityId: user.id,
+        metadata: { reason: 'unverified' },
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        severity: 'INFO',
+      });
+      throw new ForbiddenException({
+        statusCode: 403,
+        code: 'email_unverified',
+        message:
+          'Your email isn’t verified yet. Check your inbox for the code — we can resend it.',
+        email: user.email,
+      });
     }
 
     await this.prisma.user.update({

@@ -99,6 +99,13 @@ export class AdminController {
     return this.usersSvc.unbanUser(adminId, id);
   }
 
+  // P3-T5: interim manual KYC verification (gates withdrawals → step-up).
+  @Post('users/:id/verify-kyc')
+  @RequireStepUp()
+  verifyKyc(@CurrentUser('id') adminId: string, @Param('id') id: string) {
+    return this.usersSvc.verifyKyc(adminId, id);
+  }
+
   // ── Orders ─────────────────────────────────────────────────────────────────
 
   @Get('orders')

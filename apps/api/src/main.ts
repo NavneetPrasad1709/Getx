@@ -57,6 +57,17 @@ async function bootstrap() {
       );
       process.exit(1);
     }
+    /* FLOW-001: transactional email MUST work in production. Without
+       RESEND_API_KEY the mail service silently degrades to console-logging the
+       OTP, so verification/reset emails never arrive and users can never verify
+       their email — which login now requires. Allow an explicit opt-out
+       (DEV_EMAIL_CONSOLE=true) for staging smoke tests, but never by accident. */
+    if (!process.env.RESEND_API_KEY && process.env.DEV_EMAIL_CONSOLE !== 'true') {
+      console.error(
+        '❌ RESEND_API_KEY is required in production — without it OTP/verification emails are never sent and users cannot log in. Set RESEND_API_KEY, or set DEV_EMAIL_CONSOLE=true to intentionally mock email.',
+      );
+      process.exit(1);
+    }
   }
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {

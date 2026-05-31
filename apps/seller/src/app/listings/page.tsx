@@ -794,6 +794,8 @@ function StatusPill({ status }: { status: ListingStatus }) {
     PAUSED: { bg: 'bg-warning/15 text-warning ring-warning/25', label: 'Paused' },
     SOLD_OUT: { bg: 'bg-muted/40 text-muted-foreground ring-border', label: 'Sold out' },
     REMOVED: { bg: 'bg-error/15 text-error ring-error/25', label: 'Removed' },
+    REJECTED: { bg: 'bg-error/15 text-error ring-error/25', label: 'Rejected' },
+    PENDING_REVIEW: { bg: 'bg-warning/15 text-warning ring-warning/25', label: 'In review' },
   };
   const s = styles[status];
   return (
@@ -928,6 +930,8 @@ function EmptyState({
     PAUSED: 'paused listings',
     SOLD_OUT: 'sold-out listings',
     REMOVED: 'removed listings',
+    REJECTED: 'rejected listings',
+    PENDING_REVIEW: 'listings in review',
   };
 
   return (

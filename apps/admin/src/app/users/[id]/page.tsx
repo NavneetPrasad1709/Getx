@@ -15,7 +15,12 @@ import {
   toast,
 } from '@getx/ui';
 import { AdminShell } from '@/components/admin-shell';
-import { useAdminUser, useBanUser, useUnbanUser } from '@/hooks/use-admin';
+import {
+  useAdminUser,
+  useBanUser,
+  useUnbanUser,
+  useVerifyKyc,
+} from '@/hooks/use-admin';
 import { extractMessage } from '@/lib/api-error';
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
@@ -44,6 +49,7 @@ export default function AdminUserDetailPage() {
   const { data: user, isLoading, refetch } = useAdminUser(id);
   const banMutation = useBanUser();
   const unbanMutation = useUnbanUser();
+  const verifyKycMutation = useVerifyKyc();
   const [banReason, setBanReason] = useState('');
   const [showBanForm, setShowBanForm] = useState(false);
   // SAP-006: inline confirm replaces native confirm() dialog
@@ -73,6 +79,18 @@ export default function AdminUserDetailPage() {
       void refetch();
     } catch (err) {
       toast.error(extractMessage(err) ?? 'Unban failed');
+    }
+  };
+
+  // P3-T5: interim manual KYC verification (requires step-up — the modal
+  // auto-pops on the 403 step_up_required response).
+  const handleVerifyKyc = async () => {
+    try {
+      await verifyKycMutation.mutateAsync(id);
+      toast.success('KYC marked verified');
+      void refetch();
+    } catch (err) {
+      toast.error(extractMessage(err) ?? 'KYC verification failed');
     }
   };
 
@@ -156,6 +174,7 @@ export default function AdminUserDetailPage() {
             <Row label="Role" value={<Badge variant="outline">{user.role}</Badge>} />
             <Row label="Country" value={user.country} />
             <Row label="KYC Level" value={user.kycLevel} />
+            <Row label="KYC Status" value={<Badge variant="outline">{user.kycStatus}</Badge>} />
             <Row label="Email Verified" value={user.emailVerified ? 'Yes' : 'No'} />
             <Row label="Is Seller" value={user.isSeller ? 'Yes' : 'No'} />
             <Row
@@ -184,6 +203,27 @@ export default function AdminUserDetailPage() {
             <CardTitle className="text-lg">Actions</CardTitle>
           </CardHeader>
           <CardContent>
+            {/* P3-T5: interim manual KYC verification — unblocks the
+                KYC → withdrawal chain before the Sumsub widget ships. */}
+            {user.kycStatus !== 'VERIFIED' && (
+              <div className="mb-4 pb-4 border-b border-border">
+                <div className="text-[13px] text-muted-foreground mb-2">
+                  Identity verification is{' '}
+                  <span className="font-semibold text-foreground">
+                    {user.kycStatus}
+                  </span>
+                  . Verifying lets this seller request payouts.
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleVerifyKyc}
+                  disabled={verifyKycMutation.isPending}
+                >
+                  {verifyKycMutation.isPending ? 'Verifying…' : 'Mark KYC verified'}
+                </Button>
+              </div>
+            )}
             {isAdmin ? (
               <p className="text-sm text-muted-foreground">Cannot ban another admin.</p>
             ) : user.status === 'BANNED' ? (

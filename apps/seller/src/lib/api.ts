@@ -65,8 +65,13 @@ api.interceptors.response.use(
     } catch (refreshError) {
       isRefreshing = false;
       refreshSubscribers = [];
+      /* FE-003/FUNC-007: the seller app has NO /auth routes — auth lives on the
+         web app. A same-origin '/auth/login' here 404s. Bounce to the web
+         login with an absolute `next` so the user returns to where they were. */
       if (typeof window !== 'undefined' && !isPublicPath(window.location.pathname)) {
-        window.location.href = '/auth/login';
+        const webUrl = process.env.NEXT_PUBLIC_WEB_URL || 'http://localhost:3000';
+        const next = encodeURIComponent(window.location.href);
+        window.location.href = `${webUrl}/auth/login?next=${next}`;
       }
       return Promise.reject(refreshError);
     }
