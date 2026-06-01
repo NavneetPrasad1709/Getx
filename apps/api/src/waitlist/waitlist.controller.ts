@@ -27,6 +27,16 @@ const JoinSchema = z.object({
    falls back to "XX" when unknown). Separate from the soft-launch
    /waitlist/join endpoint so per-game and country waitlists can be
    drained independently. */
+/* INFRA-10: app/console logs ship to less-controlled aggregators (Railway /
+   Vercel) than the audit DB, so never put a raw email in this.logger. The audit
+   record itself still stores the full email — that IS the waitlist data, drained
+   to the CRM by ops. */
+function maskEmail(email: string): string {
+  const at = email.indexOf('@');
+  if (at <= 0) return '***';
+  return `${email[0]}***${email.slice(at)}`;
+}
+
 const GameJoinSchema = z.object({
   email: z.string().email().toLowerCase().trim().max(255),
   game: z
@@ -64,7 +74,7 @@ export class WaitlistController {
       userAgent: req.headers['user-agent'],
       severity: 'INFO',
     });
-    this.logger.log(`Waitlist join: ${dto.country} · ${dto.email}`);
+    this.logger.log(`Waitlist join: ${dto.country} · ${maskEmail(dto.email)}`);
     return { success: true as const };
   }
 
@@ -93,7 +103,7 @@ export class WaitlistController {
       userAgent: req.headers['user-agent'],
       severity: 'INFO',
     });
-    this.logger.log(`Game waitlist: ${dto.game} · ${cfCountry} · ${dto.email}`);
+    this.logger.log(`Game waitlist: ${dto.game} · ${cfCountry} · ${maskEmail(dto.email)}`);
     return { success: true as const };
   }
 }

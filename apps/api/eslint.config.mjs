@@ -26,7 +26,9 @@ export default tseslint.config(
   },
   {
     rules: {
-      '@typescript-eslint/no-explicit-any': 'off',
+      // CQ-004: the API has zero explicit `any` — keep it that way (the
+      // backend handles money + auth, so untyped escape hatches are an error).
+      '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-floating-promises': 'warn',
       '@typescript-eslint/no-unsafe-argument': 'warn',
       // Allow `const { secret, ...safe } = obj` to discard fields without

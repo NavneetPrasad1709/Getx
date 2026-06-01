@@ -20,6 +20,19 @@ type WithdrawalListRow = Prisma.WithdrawalGetPayload<{
   include: typeof WITHDRAWAL_LIST_INCLUDE;
 }>;
 
+// CQ-007: the source of truth for the listWithdrawals filter — keeps the query
+// param off the unchecked `as` cast that previously fed Prisma.
+const WITHDRAWAL_STATUSES = [
+  'PENDING',
+  'APPROVED',
+  'PROCESSING',
+  'COMPLETED',
+  'FAILED',
+  'REJECTED',
+  'CANCELLED',
+] as const;
+type WithdrawalStatusValue = (typeof WITHDRAWAL_STATUSES)[number];
+
 @Injectable()
 export class AdminFinanceService {
   constructor(
@@ -29,8 +42,17 @@ export class AdminFinanceService {
   ) {}
 
   async listWithdrawals(status?: string): Promise<WithdrawalListRow[]> {
+    let where: Prisma.WithdrawalWhereInput | undefined;
+    if (status) {
+      if (!WITHDRAWAL_STATUSES.includes(status as WithdrawalStatusValue)) {
+        throw new BadRequestException(
+          `Invalid status. Expected one of: ${WITHDRAWAL_STATUSES.join(', ')}`,
+        );
+      }
+      where = { status: status as WithdrawalStatusValue };
+    }
     return this.prisma.withdrawal.findMany({
-      where: status ? { status: status as 'PENDING' } : undefined,
+      where,
       orderBy: { requestedAt: 'desc' },
       take: 100,
       include: WITHDRAWAL_LIST_INCLUDE,

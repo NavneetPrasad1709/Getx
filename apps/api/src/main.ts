@@ -89,8 +89,15 @@ async function bootstrap() {
   // SIGTERM/SIGINT clean-shutdown for Railway/Render rollouts.
   app.enableShutdownHooks();
 
-  // Trust the platform reverse proxy so req.ip + secure cookies work.
-  // Railway/Render/Vercel front the app with their own load balancer.
+  /* Trust the platform reverse proxy so req.ip + secure cookies work.
+     Railway/Render/Vercel front the app with their own load balancer.
+
+     INFRA-05 — boundary: the value `1` trusts EXACTLY ONE hop. req.ip is then
+     the last entry the platform LB appended to X-Forwarded-For; everything the
+     client itself put in XFF is ignored, so a client cannot spoof req.ip (used
+     by rate limiting + audit logs). If a SECOND trusted proxy is ever added in
+     front (extra CDN/WAF hop), bump this to 2 — otherwise the now-untrusted hop
+     lets the client forge req.ip. Do not set it to `true` (trust all hops). */
   app.set('trust proxy', 1);
 
   app.use(

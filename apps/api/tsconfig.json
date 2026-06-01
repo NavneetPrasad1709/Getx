@@ -17,8 +17,11 @@
     "skipLibCheck": true,
     "strictNullChecks": true,
     "forceConsistentCasingInFileNames": true,
-    "noImplicitAny": true,
-    "strictBindCallApply": true,
-    "noFallthroughCasesInSwitch": true
+    "strict": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    // strictPropertyInitialization off: NestJS DI assigns provider/@WebSocketServer
+    // fields outside the constructor, which strict init would flag as uninitialised.
+    "strictPropertyInitialization": false
   }
 }

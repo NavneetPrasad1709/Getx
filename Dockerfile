@@ -1,7 +1,9 @@
 # syntax=docker/dockerfile:1.7
 FROM node:24-bookworm-slim AS base
 RUN apt-get update -y && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
-RUN npm install -g pnpm@10.15.0
+# Pin pnpm to the repo's `packageManager` (root package.json) via corepack so
+# the Docker build can't drift from local/CI (was hardcoded pnpm@10.15.0).
+RUN corepack enable && corepack prepare pnpm@11.0.8 --activate
 
 # Install ALL workspace deps (including transitive) so the build stage
 # can compile @getx/api and its workspace siblings.
@@ -46,7 +48,11 @@ ENV NODE_ENV=production
 # Bind the listener to 0.0.0.0 instead of the platform default so the
 # Railway edge can reach it. main.ts honors $HOST via process.env if set.
 ENV HOST=0.0.0.0
-COPY --from=build /app /app
+# INFRA-02: run as a non-root user. Created before COPY so the build tree is
+# owned by it; the app only needs read + stdout, never root.
+RUN useradd -r -u 10001 -m -d /home/appuser appuser
+COPY --from=build --chown=appuser:appuser /app /app
+USER appuser
 EXPOSE 4000
 WORKDIR /app/apps/api
 CMD ["node", "dist/main"]
