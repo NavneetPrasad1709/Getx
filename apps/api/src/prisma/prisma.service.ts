@@ -22,14 +22,20 @@ export class PrismaService
     });
   }
 
-  async onModuleInit(): Promise<void> {
-    try {
-      await this.$connect();
-      this.logger.log('Prisma connected to database');
-    } catch (err) {
-      this.logger.error('Prisma failed to connect', err as Error);
-      throw err;
-    }
+  onModuleInit(): void {
+    /* Connect in the BACKGROUND — never block (or fail) NestJS bootstrap on the
+       database. Awaiting $connect() here meant a slow/unreachable DB at boot
+       hung the app before app.listen(), so Railway's healthcheck never got a
+       response and every deploy was rolled back. Prisma also connects lazily on
+       the first query, so this is just an eager warm-up. */
+    this.$connect()
+      .then(() => this.logger.log('Prisma connected to database'))
+      .catch((err) =>
+        this.logger.error(
+          'Prisma initial connect failed (will retry on first query)',
+          err as Error,
+        ),
+      );
   }
 
   async onModuleDestroy(): Promise<void> {
