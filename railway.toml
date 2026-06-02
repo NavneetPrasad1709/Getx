@@ -1,12 +1,18 @@
 # Railway deploy config for the GETX API.
 # Uses the repo-root Dockerfile (multi-stage: deps → build → prod, non-root).
 #
-# ARCH-017 / INFRA-06: migrations run AUTOMATICALLY before each release via the
-# preDeployCommand below (`prisma migrate deploy`). It runs in the deployed
-# image with the service env and FAILS THE RELEASE if a migration errors, so a
-# broken/un-applied migration can never reach traffic. Point DATABASE_URL at the
-# DIRECT (non-pooled) Postgres URL for this step — PgBouncer transaction-pooling
-# can break migration advisory locks.
+# ARCH-017 / INFRA-06 — automatic migrations are TEMPORARILY DISABLED.
+# The `preDeployCommand` below ran `prisma migrate deploy`, but it fails with
+# Prisma P1001 (can't reach Neon) on every release because the schema's
+# `directUrl = env("DIRECT_URL")` points at an unreachable host. A failed
+# pre-deploy blocks the WHOLE release, so the API was stuck on old code.
+#
+# TO RE-ENABLE: set `DIRECT_URL` in Railway to the DIRECT (non-pooled) Neon
+# connection string (the `DATABASE_URL` host without `-pooler` and without the
+# pgbouncer/connection_limit/pool_timeout params), confirm `prisma migrate
+# deploy` connects, then restore the preDeployCommand line below.
+# Until then, run migrations manually before promoting:
+#   DIRECT_URL=<direct-neon-url> pnpm --filter @getx/database exec prisma migrate deploy
 
 [build]
 builder = "DOCKERFILE"
@@ -14,7 +20,7 @@ dockerfilePath = "Dockerfile"
 
 [deploy]
 startCommand = "node dist/main"
-preDeployCommand = "pnpm --filter @getx/database exec prisma migrate deploy"
+# preDeployCommand = "pnpm --filter @getx/database exec prisma migrate deploy"  # re-enable once DIRECT_URL is fixed (see header)
 healthcheckPath = "/api/v1/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
