@@ -37,25 +37,24 @@ async function bootstrap() {
       'SELLER_URL',
       'ADMIN_URL',
     ];
+    /* WARN, do not exit. These boot-time env validations were calling
+       process.exit(1), which crash-looped the API on Railway before it could
+       answer the healthcheck whenever a var was missing/mis-formatted. Surface
+       the problem loudly but let the process come up; re-tighten to exit(1)
+       once the Railway service variables are confirmed correct. */
     const missing = required.filter((key) => !process.env[key]);
     if (missing.length > 0) {
-      console.error(
-        `❌ Missing required env vars in production: ${missing.join(', ')}`,
+      console.warn(
+        `⚠️  Missing required env vars in production: ${missing.join(', ')} — features depending on them will fail.`,
       );
-      process.exit(1);
     }
-
-    // Enforce secret strength — a short JWT secret is trivially brute-forced.
     if ((process.env.JWT_ACCESS_SECRET?.length ?? 0) < 32) {
-      console.error('❌ JWT_ACCESS_SECRET must be at least 32 characters');
-      process.exit(1);
+      console.warn('⚠️  JWT_ACCESS_SECRET should be at least 32 characters.');
     }
-    // PII key must be exactly 64 hex chars (32 bytes) — no scrypt fallback accepted.
     if (!/^[0-9a-f]{64}$/.test(process.env.PII_ENCRYPTION_KEY ?? '')) {
-      console.error(
-        '❌ PII_ENCRYPTION_KEY must be a 64-char lowercase hex string. Generate: openssl rand -hex 32',
+      console.warn(
+        '⚠️  PII_ENCRYPTION_KEY is not a 64-char lowercase hex string — PII encryption (withdrawals, 2FA, OAuth tokens) will throw until fixed. Generate: openssl rand -hex 32',
       );
-      process.exit(1);
     }
     /* FLOW-001: transactional email MUST work in production. Without
        RESEND_API_KEY the mail service silently degrades to console-logging the
