@@ -48,11 +48,11 @@ ENV NODE_ENV=production
 # Bind the listener to 0.0.0.0 instead of the platform default so the
 # Railway edge can reach it. main.ts honors $HOST via process.env if set.
 ENV HOST=0.0.0.0
-# INFRA-02: run as a non-root user. Created before COPY so the build tree is
-# owned by it; the app only needs read + stdout, never root.
-RUN useradd -r -u 10001 -m -d /home/appuser appuser
-COPY --from=build --chown=appuser:appuser /app /app
-USER appuser
+# NOTE: non-root user (INFRA-02) temporarily reverted — it was a suspect for the
+# container failing to start on Railway. Re-introduce once the deploy is stable
+# and verified (Prisma query-engine + any runtime write paths readable/owned by
+# the non-root user).
+COPY --from=build /app /app
 EXPOSE 4000
 WORKDIR /app/apps/api
 CMD ["node", "dist/main"]
