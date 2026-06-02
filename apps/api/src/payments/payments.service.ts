@@ -50,9 +50,20 @@ export class PaymentsService {
     const isProd = process.env.NODE_ENV === 'production';
     const hasStripe = !!config.get<string>('STRIPE_SECRET_KEY');
 
+    // Payments are intentionally gated OFF until the Stripe account is approved,
+    // so STRIPE_SECRET_KEY is deliberately unset in production right now. This
+    // constructor used to `throw` in that case — but a throw here aborts NestJS
+    // DI before app.listen(), so the platform healthcheck never gets a response
+    // and EVERY deploy fails ("replicas never became healthy"). Degrade to the
+    // MOCK provider instead (StripePaymentProvider/StripeConnectService already
+    // do the same), and log loudly. The provider itself still refuses to move
+    // real money — checkout returns a mock session — so nothing settles live by
+    // accident. When Stripe is approved: set STRIPE_SECRET_KEY and redeploy;
+    // `hasStripe` flips to true and the real provider activates with no code change.
     if (!hasStripe && isProd) {
-      throw new Error(
-        'STRIPE_SECRET_KEY missing in production — refusing to start without a real payment provider.',
+      this.logger.warn(
+        'STRIPE_SECRET_KEY missing in production — payments running in MOCK mode ' +
+          '(real checkout disabled). Set STRIPE_SECRET_KEY to enable live payments.',
       );
     }
 
