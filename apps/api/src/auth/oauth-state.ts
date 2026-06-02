@@ -73,6 +73,78 @@ export function verifyOAuthState(
   return timingSafeEqual(a, b);
 }
 
+/* ─── post-login `next` redirect (carried through the OAuth round-trip) ───
+   The seller/admin apps bounce unauthenticated users to the web login with
+   ?next=<their-url>. Email login honours it directly, but the OAuth callback
+   used to hard-redirect to the homepage, so social login always dropped the
+   user back on `/`. We stash a validated `next` in a short-lived cookie at the
+   start route and consume it at the callback. */
+export const OAUTH_NEXT_COOKIE = 'getx_oauth_next';
+
+function trustedOrigins(config: ConfigService): string[] {
+  const out: string[] = [];
+  for (const key of ['WEB_URL', 'SELLER_URL', 'ADMIN_URL'] as const) {
+    const raw = config.get<string>(key);
+    if (!raw) continue;
+    for (const part of raw.split(',').map((s) => s.trim()).filter(Boolean)) {
+      try {
+        out.push(new URL(part).origin);
+      } catch {
+        /* skip malformed */
+      }
+    }
+  }
+  return out;
+}
+
+/** Open-redirect guard: only same-origin relative paths, our own app origins,
+ *  or localhost are allowed as a post-login destination. */
+export function safeOAuthNext(
+  raw: unknown,
+  config: ConfigService,
+): string | null {
+  if (typeof raw !== 'string' || raw.length === 0) return null;
+  // Relative path — but never protocol-relative ('//evil.com').
+  if (raw.startsWith('/') && !raw.startsWith('//')) return raw;
+  try {
+    const u = new URL(raw);
+    if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') return raw;
+    if (trustedOrigins(config).includes(u.origin)) return raw;
+  } catch {
+    /* not a URL */
+  }
+  return null;
+}
+
+/** At the OAuth start route: stash the validated `next` in a cookie. */
+export function issueOAuthNext(
+  req: Request,
+  res: Response,
+  config: ConfigService,
+): void {
+  const next = safeOAuthNext(
+    (req.query as Record<string, unknown> | undefined)?.next,
+    config,
+  );
+  if (!next) return;
+  res.cookie(OAUTH_NEXT_COOKIE, next, {
+    ...cookieOptions(config),
+    maxAge: STATE_TTL_MS,
+  });
+}
+
+/** At the OAuth callback: read + clear the cookie and re-validate it. */
+export function consumeOAuthNext(
+  req: Request,
+  res: Response,
+  config: ConfigService,
+): string | null {
+  const cookies = req.cookies as Record<string, string> | undefined;
+  const raw = cookies?.[OAUTH_NEXT_COOKIE];
+  res.clearCookie(OAUTH_NEXT_COOKIE, cookieOptions(config));
+  return safeOAuthNext(raw, config);
+}
+
 /* Start-route guards. They extend the provider AuthGuard purely to hook
    getAuthenticateOptions(), where we set the state cookie and hand passport
    the matching `state` to embed in the authorization URL. The redirect to the
@@ -83,7 +155,9 @@ export class GoogleOAuthStartGuard extends AuthGuard('google') {
     super();
   }
   getAuthenticateOptions(context: ExecutionContext): IAuthModuleOptions {
-    const res = context.switchToHttp().getResponse<Response>();
+    const http = context.switchToHttp();
+    issueOAuthNext(http.getRequest<Request>(), http.getResponse<Response>(), this.config);
+    const res = http.getResponse<Response>();
     return { state: issueOAuthState(res, this.config) } as IAuthModuleOptions;
   }
 }
@@ -94,7 +168,9 @@ export class DiscordOAuthStartGuard extends AuthGuard('discord') {
     super();
   }
   getAuthenticateOptions(context: ExecutionContext): IAuthModuleOptions {
-    const res = context.switchToHttp().getResponse<Response>();
+    const http = context.switchToHttp();
+    issueOAuthNext(http.getRequest<Request>(), http.getResponse<Response>(), this.config);
+    const res = http.getResponse<Response>();
     return { state: issueOAuthState(res, this.config) } as IAuthModuleOptions;
   }
 }

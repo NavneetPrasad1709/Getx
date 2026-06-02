@@ -33,6 +33,7 @@ import {
   verifyTotp,
 } from '../common/totp';
 import { STEP_UP_AUDIENCE } from './guards/step-up.guard';
+import { consumeOAuthNext } from './oauth-state';
 
 @Injectable()
 export class AuthService {
@@ -811,10 +812,13 @@ export class AuthService {
       userAgent: req.headers['user-agent'],
     });
 
-    // Redirect the browser back to the SPA. WEB_URL may be a
-    // comma-separated allowlist; pick the canonical first entry.
+    // Redirect the browser back to where they came from (the seller/admin app
+    // that bounced them to login), if a validated `next` was stashed at the
+    // OAuth start; otherwise the SPA home. WEB_URL may be a comma-separated
+    // allowlist; pick the canonical first entry.
+    const next = consumeOAuthNext(req, res, this.config);
     const landing = firstOrigin(this.config, 'WEB_URL', 'http://localhost:3000');
-    res.redirect(`${landing}/?oauth=ok`);
+    res.redirect(next ?? `${landing}/?oauth=ok`);
     return;
   }
 

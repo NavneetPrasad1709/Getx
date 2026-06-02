@@ -4,6 +4,7 @@ import {
   OAUTH_STATE_COOKIE,
   issueOAuthState,
   verifyOAuthState,
+  safeOAuthNext,
 } from './oauth-state';
 
 // AUTH-001 — OAuth login-CSRF / session-fixation defence. These tests pin the
@@ -12,6 +13,16 @@ import {
 
 const config = {
   get: (key: string) => (key === 'NODE_ENV' ? 'test' : undefined),
+} as unknown as ConfigService;
+
+// Config with the app origins, for the next-redirect open-redirect guard.
+const appConfig = {
+  get: (key: string) =>
+    ({
+      WEB_URL: 'https://getx.live',
+      SELLER_URL: 'https://sell.getx.live',
+      ADMIN_URL: 'https://admin.getx.live',
+    })[key],
 } as unknown as ConfigService;
 
 function mockRes() {
@@ -51,6 +62,38 @@ describe('oauth-state', () => {
       expect(issueOAuthState(mockRes(), config)).not.toBe(
         issueOAuthState(mockRes(), config),
       );
+    });
+  });
+
+  describe('safeOAuthNext (open-redirect guard)', () => {
+    it('allows our own app origins (so social login returns to the seller app)', () => {
+      expect(safeOAuthNext('https://sell.getx.live/listings', appConfig)).toBe(
+        'https://sell.getx.live/listings',
+      );
+      expect(safeOAuthNext('https://admin.getx.live/', appConfig)).toBe(
+        'https://admin.getx.live/',
+      );
+    });
+
+    it('allows localhost (dev) and same-origin relative paths', () => {
+      expect(safeOAuthNext('http://localhost:3001/', appConfig)).toBe(
+        'http://localhost:3001/',
+      );
+      expect(safeOAuthNext('/sellers/program', appConfig)).toBe(
+        '/sellers/program',
+      );
+    });
+
+    it('REJECTS external origins and protocol-relative URLs (no open redirect)', () => {
+      expect(safeOAuthNext('https://evil.com/phish', appConfig)).toBeNull();
+      expect(safeOAuthNext('//evil.com', appConfig)).toBeNull();
+      expect(safeOAuthNext('javascript:alert(1)', appConfig)).toBeNull();
+    });
+
+    it('rejects empty / non-string input', () => {
+      expect(safeOAuthNext('', appConfig)).toBeNull();
+      expect(safeOAuthNext(undefined, appConfig)).toBeNull();
+      expect(safeOAuthNext(123, appConfig)).toBeNull();
     });
   });
 
