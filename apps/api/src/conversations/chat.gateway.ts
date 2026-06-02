@@ -96,11 +96,29 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
       return;
     }
 
-    // Each adapter needs its own client (pub + sub cannot share one connection).
-    const pubClient = redis;
-    const subClient = redis.duplicate();
-    this.server.adapter(createAdapter(pubClient, subClient));
-    this.logger.log('Socket.io Redis adapter enabled — cross-replica chat active');
+    /* Each adapter needs its own client (pub + sub cannot share one connection).
+       CRITICAL: both clients MUST have an 'error' listener. The pub client gets
+       one from redis.factory, but the DUPLICATED sub client does not — and an
+       ioredis client with no 'error' listener throws an UNHANDLED 'error' event
+       (crashing the whole process) the moment Redis is unreachable. On a deploy
+       where REDIS_URL points at a down/misconfigured Redis, that took the API
+       down at boot → healthcheck failure. Handle it and never let a Redis
+       problem crash the API — degrade to single-replica instead. */
+    try {
+      const pubClient = redis;
+      const subClient = redis.duplicate();
+      subClient.on('error', (err: Error) =>
+        this.logger.error(`Socket.io Redis sub-client error: ${err.message}`),
+      );
+      this.server.adapter(createAdapter(pubClient, subClient));
+      this.logger.log('Socket.io Redis adapter enabled — cross-replica chat active');
+    } catch (err) {
+      this.logger.error(
+        `Failed to enable Redis socket adapter — continuing single-replica: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   async handleConnection(client: AuthenticatedSocket) {
