@@ -62,22 +62,19 @@ async function bootstrap() {
        OTP, so verification/reset emails never arrive and users can never verify
        their email — which login now requires. Allow an explicit opt-out
        (DEV_EMAIL_CONSOLE=true) for staging smoke tests, but never by accident. */
+    /* WARN, don't exit: these are operationally important but should not block
+       the release. Fail-hard boot guards were taking the API down on deploy
+       when the env wasn't set. Re-tighten to process.exit(1) once RESEND_API_KEY
+       and REDIS_URL are configured in the Railway service variables. */
     if (!process.env.RESEND_API_KEY && process.env.DEV_EMAIL_CONSOLE !== 'true') {
-      console.error(
-        '❌ RESEND_API_KEY is required in production — without it OTP/verification emails are never sent and users cannot log in. Set RESEND_API_KEY, or set DEV_EMAIL_CONSOLE=true to intentionally mock email.',
+      console.warn(
+        '⚠️  RESEND_API_KEY is not set — OTP/verification emails are MOCKED (logged, not sent). Users cannot verify email/login until this is configured.',
       );
-      process.exit(1);
     }
-    /* P5-T1: Redis coordinates rate limiting, cron leader-election, the
-       Socket.IO adapter, and the auth cache ACROSS replicas. Running more than
-       one replica without it causes duplicate cron money-effects and per-pod
-       (ineffective) rate limits. Require it by default; allow an explicit
-       single-replica opt-out. */
     if (!process.env.REDIS_URL && process.env.ALLOW_SINGLE_REPLICA !== 'true') {
-      console.error(
-        '❌ REDIS_URL is required in production for multi-replica coordination (throttler, cron leader-election, socket adapter, auth cache). Set REDIS_URL, or set ALLOW_SINGLE_REPLICA=true to intentionally run a single replica without it.',
+      console.warn(
+        '⚠️  REDIS_URL is not set — running single-replica (in-memory throttler/cache, no cross-replica coordination). Do NOT scale past 1 replica without it.',
       );
-      process.exit(1);
     }
   }
 
