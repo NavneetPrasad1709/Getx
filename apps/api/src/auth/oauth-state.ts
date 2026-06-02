@@ -97,8 +97,27 @@ function trustedOrigins(config: ConfigService): string[] {
   return out;
 }
 
-/** Open-redirect guard: only same-origin relative paths, our own app origins,
- *  or localhost are allowed as a post-login destination. */
+/* First-party apex + any subdomain (web, sell, admin, …) are all ours, so an
+   https `next` pointing at one is safe to honour even when SELLER_URL/ADMIN_URL
+   aren't perfectly configured on the API. This MIRRORS the web login page's
+   `TRUSTED_BASE_DOMAINS` policy — without it the API silently dropped
+   `next=https://sell.getx.live/...` (origin not in SELLER_URL) and bounced
+   sellers back to the homepage after OAuth. Suffix match is exact: only
+   `getx.live` itself or a `.getx.live` subdomain qualifies — `getx.live.evil.com`
+   ends in `.evil.com`, and `notgetx.live` lacks the leading dot, so both fail. */
+const FIRST_PARTY_DOMAIN = 'getx.live';
+
+function isFirstPartyHttps(u: URL): boolean {
+  if (u.protocol !== 'https:') return false;
+  return (
+    u.hostname === FIRST_PARTY_DOMAIN ||
+    u.hostname.endsWith(`.${FIRST_PARTY_DOMAIN}`)
+  );
+}
+
+/** Open-redirect guard: only same-origin relative paths, our own first-party
+ *  origins (configured or any *.getx.live), or localhost are allowed as a
+ *  post-login destination. */
 export function safeOAuthNext(
   raw: unknown,
   config: ConfigService,
@@ -110,6 +129,7 @@ export function safeOAuthNext(
     const u = new URL(raw);
     if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') return raw;
     if (trustedOrigins(config).includes(u.origin)) return raw;
+    if (isFirstPartyHttps(u)) return raw;
   } catch {
     /* not a URL */
   }
