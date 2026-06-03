@@ -10,26 +10,22 @@ import { StepUpProvider } from '@/components/step-up-provider';
 import './globals.css';
 
 /* Self-host fonts so admin never falls back to a serif on slow Google
-   Fonts networks. CSS vars get bound to GETX design tokens via
-   globals.css. */
-const poppinsDisplay = Poppins({
+   Fonts networks. Publish the var names globals.css actually reads
+   (--font-poppins / --font-jetbrains); it then maps those onto the GETX
+   design tokens (--font-display / --font-body / --font-mono). Previously
+   layout exposed the token names directly while globals.css referenced
+   var(--font-poppins) — never defined — so the font fell back to serif. */
+const poppins = Poppins({
   subsets: ['latin'],
   weight: ['300', '400', '500', '600', '700', '800', '900'],
-  variable: '--font-display',
-  display: 'swap',
-  preload: true,
-});
-const poppinsBody = Poppins({
-  subsets: ['latin'],
-  weight: ['300', '400', '500', '600', '700', '800', '900'],
-  variable: '--font-body',
+  variable: '--font-poppins',
   display: 'swap',
   preload: true,
 });
 const jetbrains = JetBrains_Mono({
   subsets: ['latin'],
   weight: ['400', '500', '700'],
-  variable: '--font-mono',
+  variable: '--font-jetbrains',
   display: 'swap',
   preload: false,
 });
@@ -45,7 +41,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${poppinsDisplay.variable} ${poppinsBody.variable} ${jetbrains.variable}`}
+      className={`${poppins.variable} ${jetbrains.variable}`}
     >
       <body className="antialiased" suppressHydrationWarning>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
