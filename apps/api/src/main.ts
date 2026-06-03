@@ -9,6 +9,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
 import { ZodExceptionFilter } from './common/zod-exception.filter';
+import { DecimalSerializeInterceptor } from './common/decimal-serialize.interceptor';
 
 interface RawBodyRequest extends Request {
   rawBody?: Buffer;
@@ -172,6 +173,10 @@ async function bootstrap() {
   // Order matters: NestJS iterates filters reverse-registration order,
   // so list the catch-all FIRST and the more specific ZodErrorFilter LAST.
   app.useGlobalFilters(new AllExceptionsFilter(), new ZodExceptionFilter());
+
+  // Serialize Prisma Decimal money fields back to JSON numbers (Decimal's JSON
+  // form is a string, which crashes frontends that call price.toFixed()).
+  app.useGlobalInterceptors(new DecimalSerializeInterceptor());
 
   app.setGlobalPrefix('api/v1');
 
